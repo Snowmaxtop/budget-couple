@@ -4,10 +4,10 @@
 // de VOTRE projet (Firebase console → ⚙️ Paramètres du projet → vos applis
 // → objet de configuration SDK).
 export const firebaseConfig = {
-  apiKey: "REMPLACER_apiKey",
-  authDomain: "REMPLACER.firebaseapp.com",
-  projectId: "REMPLACER_projectId",
-  storageBucket: "REMPLACER.appspot.com",
-  messagingSenderId: "REMPLACER_messagingSenderId",
-  appId: "REMPLACER_appId"
+  apiKey: "AIzaSyD3tIhELiZA_i3lUinqFqDTf0EuG4YHvOU",
+  authDomain: "budget-couple-ca108.firebaseapp.com",
+  projectId: "budget-couple-ca108",
+  storageBucket: "budget-couple-ca108.firebasestorage.app",
+  messagingSenderId: "1006858213303",
+  appId: "1:1006858213303:web:56b7ae2f5decb8b3613a32"
 };
