@@ -303,6 +303,22 @@
       <div class="share-item"><span class="share-dot" style="background:var(--sage)"></span>${escapeHtml(pB.name)} · ${pctB}%</div>`;
   }
 
+  function refreshBudgetPersonNames() {
+    document.getElementById('loisirs-name0').textContent = state.people[0].name;
+    document.getElementById('loisirs-name1').textContent = state.people[1].name;
+  }
+
+  function renderBudgetBreakdown() {
+    const breakdown = Calculations.computeBudgetBreakdown(state);
+    document.getElementById('budget-breakdown').innerHTML = breakdown.map((b, i) => `
+      <div class="budget-person">
+        <div class="budget-person-header"><span class="avatar ${i === 0 ? 'avatar-a' : 'avatar-b'}">${initial(b.name)}</span>${escapeHtml(b.name)}</div>
+        <div class="budget-line"><span>Dépenses communes (récurrentes)</span><span>${formatCurrency(b.commun)}</span></div>
+        <div class="budget-line"><span>Loisirs</span><span>${formatCurrency(b.loisirs)}</span></div>
+        <div class="budget-line budget-line-total ${b.savings < 0 ? 'negative' : 'positive'}"><span>Épargne estimée</span><span>${formatCurrency(b.savings)}</span></div>
+      </div>`).join('');
+  }
+
   function syncSettingsValues() {
     const peopleForm = document.getElementById('settings-people-form');
     peopleForm.name0.value = state.people[0].name;
@@ -310,6 +326,12 @@
     peopleForm.name1.value = state.people[1].name;
     peopleForm.salary1.value = state.people[1].salary || '';
     renderSharesPreview();
+
+    const loisirsForm = document.getElementById('settings-loisirs-form');
+    loisirsForm.loisirs0.value = state.people[0].loisirs || '';
+    loisirsForm.loisirs1.value = state.people[1].loisirs || '';
+    refreshBudgetPersonNames();
+    renderBudgetBreakdown();
   }
 
   function ensureSettingsBuilt() {
@@ -324,6 +346,16 @@
       state.people[1].salary = parseFloat(peopleForm.salary1.value) || 0;
       persist();
       renderSharesPreview();
+      refreshBudgetPersonNames();
+      renderBudgetBreakdown();
+    });
+
+    const loisirsForm = document.getElementById('settings-loisirs-form');
+    loisirsForm.addEventListener('input', () => {
+      state.people[0].loisirs = parseFloat(loisirsForm.loisirs0.value) || 0;
+      state.people[1].loisirs = parseFloat(loisirsForm.loisirs1.value) || 0;
+      persist();
+      renderBudgetBreakdown();
     });
 
     document.getElementById('export-btn').addEventListener('click', () => Storage.exportJSON(state));

@@ -83,5 +83,41 @@ const Calculations = (() => {
     return Array.from(keys).filter(Boolean).sort().reverse();
   }
 
-  return { computeShares, computeMonthSummary, monthKeyOf, categoryBreakdown, allMonthKeysWithActivity };
+  // Ramène le montant d'une récurrence à son équivalent mensuel, quelle que
+  // soit sa fréquence (utile pour additionner des règles hebdo/mensuelles/
+  // annuelles dans un même total mensuel).
+  function monthlyEquivalentAmount(rule) {
+    const amt = Number(rule.amount) || 0;
+    if (rule.frequency === 'weekly') return amt * (52 / 12);
+    if (rule.frequency === 'yearly') return amt / 12;
+    return amt; // monthly
+  }
+
+  // Total mensuel des dépenses communes récurrentes actives (loyer,
+  // abonnements partagés, etc.), toutes fréquences ramenées au mois.
+  function totalMonthlyRecurringCommun(state) {
+    return (state.recurring || [])
+      .filter(r => r.type === 'commun' && r.active !== false)
+      .reduce((sum, r) => sum + monthlyEquivalentAmount(r), 0);
+  }
+
+  // Pour chaque personne : sa part des dépenses communes récurrentes (au
+  // prorata courant des salaires), le budget loisirs qu'elle a défini, et
+  // l'épargne estimée qui en découle (salaire - loisirs - part commune).
+  function computeBudgetBreakdown(state) {
+    const shares = computeShares(state.people);
+    const totalCommunMonthly = totalMonthlyRecurringCommun(state);
+    return state.people.map(p => {
+      const commun = totalCommunMonthly * (shares[p.id] || 0);
+      const loisirs = Number(p.loisirs) || 0;
+      const salary = Number(p.salary) || 0;
+      const savings = salary - loisirs - commun;
+      return { id: p.id, name: p.name, commun, loisirs, savings };
+    });
+  }
+
+  return {
+    computeShares, computeMonthSummary, monthKeyOf, categoryBreakdown,
+    allMonthKeysWithActivity, totalMonthlyRecurringCommun, computeBudgetBreakdown
+  };
 })();

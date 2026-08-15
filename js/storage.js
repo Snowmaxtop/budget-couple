@@ -10,8 +10,8 @@ const Storage = (() => {
       version: 1,
       updatedAt: new Date().toISOString(),
       people: [
-        { id: 'p1', name: 'Xanthin', salary: 0 },
-        { id: 'p2', name: 'Ma compagne', salary: 0 }
+        { id: 'p1', name: 'Xanthin', salary: 0, loisirs: 0 },
+        { id: 'p2', name: 'Ma compagne', salary: 0, loisirs: 0 }
       ],
       expenses: [],
       recurring: [],
@@ -21,10 +21,13 @@ const Storage = (() => {
 
   function mergeWithDefaults(parsed) {
     const base = defaultState();
+    const people = (parsed.people && parsed.people.length === 2)
+      ? parsed.people.map((p, i) => ({ ...base.people[i], ...p }))
+      : base.people;
     return {
       ...base,
       ...parsed,
-      people: (parsed.people && parsed.people.length === 2) ? parsed.people : base.people,
+      people,
       expenses: parsed.expenses || [],
       recurring: parsed.recurring || [],
       settlements: parsed.settlements || {}
