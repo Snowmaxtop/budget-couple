@@ -289,6 +289,18 @@ h1, h2, h3, p { margin: 0; }
 .share-item { display: flex; align-items: center; gap: 8px; font-size: .85rem; font-weight: 700; }
 .share-dot { width: 10px; height: 10px; border-radius: 50%; }
 
+.budget-person-name { font-size: .9rem; font-weight: 600; display: flex; align-items: center; }
+.budget-breakdown { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.budget-person { padding: 10px 0; }
+.budget-person + .budget-person { border-top: 1px dashed var(--line); }
+.budget-person-header { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: .86rem; margin-bottom: 8px; }
+.budget-line { display: flex; justify-content: space-between; align-items: center; font-size: .82rem; color: var(--ink-soft); padding: 3px 0; }
+.budget-line span:last-child { font-weight: 700; color: var(--ink); }
+.budget-line-total { margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.budget-line-total span:last-child { font-size: .95rem; }
+.budget-line-total.positive span:last-child { color: var(--sage-deep); }
+.budget-line-total.negative span:last-child { color: var(--danger); }
+
 .sync-status { font-size: .8rem; color: var(--ink-soft); min-height: 1.2em; margin-top: 10px; }
 .sync-status.error { color: var(--danger); }
 .fine-print { font-size: .72rem; color: var(--ink-faint); line-height: 1.5; margin-top: 10px; }
