@@ -23,6 +23,11 @@ const Calculations = (() => {
   // réellement avancé, et qui doit combien à qui.
   // Si le mois est déjà "réglé", on réutilise les % figés à ce moment-là plutôt
   // que les % courants (utile si les salaires ont changé depuis).
+  // Chaque dépense commune a un splitMode : 'prorata' (défaut, au % des
+  // salaires), '5050' (moitié-moitié), ou 'reimburse' (l'autre personne
+  // rembourse la totalité). Le résumé sépare aussi les totaux/soldes en deux
+  // groupes pour l'affichage : "communes" (prorata + 50/50) et
+  // "remboursements" (reimburse), en plus du solde global combiné.
   function computeMonthSummary(state, monthKey) {
     const people = state.people;
     const settlement = state.settlements[monthKey];
@@ -36,31 +41,62 @@ const Calculations = (() => {
 
     const total = monthExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
-    const paidBy = {};
-    people.forEach(p => { paidBy[p.id] = 0; });
-    monthExpenses.forEach(e => {
-      paidBy[e.personId] = (paidBy[e.personId] || 0) + (Number(e.amount) || 0);
-    });
-
-    const due = {};
-    people.forEach(p => { due[p.id] = total * (shares[p.id] || 0); });
-
-    const balance = {};
-    people.forEach(p => { balance[p.id] = (paidBy[p.id] || 0) - (due[p.id] || 0); });
-
-    let transfer = null;
-    if (people.length === 2) {
-      const [a, b] = people;
-      const diff = balance[a.id];
-      if (Math.abs(diff) > 0.005) {
-        transfer = diff > 0
-          ? { fromId: b.id, toId: a.id, amount: diff }
-          : { fromId: a.id, toId: b.id, amount: -diff };
+    function dueContribution(e, due) {
+      const amount = Number(e.amount) || 0;
+      const mode = e.splitMode || 'prorata';
+      if (mode === 'reimburse') {
+        people.forEach(p => { due[p.id] += (p.id === e.personId) ? 0 : amount; });
+      } else if (mode === '5050') {
+        people.forEach(p => { due[p.id] += amount * 0.5; });
+      } else {
+        people.forEach(p => { due[p.id] += amount * (shares[p.id] || 0); });
       }
     }
 
+    function computeBucket(list) {
+      const paid = {}, due = {};
+      people.forEach(p => { paid[p.id] = 0; due[p.id] = 0; });
+      list.forEach(e => {
+        paid[e.personId] = (paid[e.personId] || 0) + (Number(e.amount) || 0);
+        dueContribution(e, due);
+      });
+      const bTotal = list.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      const balance = {};
+      people.forEach(p => { balance[p.id] = paid[p.id] - due[p.id]; });
+      return { total: bTotal, paid, due, balance };
+    }
+
+    function bucketTransfer(balance) {
+      if (people.length !== 2) return null;
+      const [a, b] = people;
+      const diff = balance[a.id];
+      if (Math.abs(diff) <= 0.005) return null;
+      return diff > 0
+        ? { fromId: b.id, toId: a.id, amount: diff }
+        : { fromId: a.id, toId: b.id, amount: -diff };
+    }
+
+    const reimburseExpenses = monthExpenses.filter(e => e.splitMode === 'reimburse');
+    const communExpenses = monthExpenses.filter(e => e.splitMode !== 'reimburse');
+    const communBucket = computeBucket(communExpenses);
+    const reimburseBucket = computeBucket(reimburseExpenses);
+
+    const paidBy = {}, due = {};
+    people.forEach(p => {
+      paidBy[p.id] = communBucket.paid[p.id] + reimburseBucket.paid[p.id];
+      due[p.id] = communBucket.due[p.id] + reimburseBucket.due[p.id];
+    });
+    const balance = {};
+    people.forEach(p => { balance[p.id] = paidBy[p.id] - due[p.id]; });
+
+    const transfer = bucketTransfer(balance);
+    const communTransfer = bucketTransfer(communBucket.balance);
+    const reimburseTransfer = bucketTransfer(reimburseBucket.balance);
+
     return {
       monthKey, shares, total, paidBy, due, balance, transfer,
+      communTotal: communBucket.total, communTransfer,
+      reimburseTotal: reimburseBucket.total, reimburseTransfer,
       expenses: monthExpenses,
       settled: !!(settlement && settlement.settled),
       settledDate: settlement ? settlement.settledDate : null
@@ -116,8 +152,26 @@ const Calculations = (() => {
     });
   }
 
+  // Pour chaque personne : ce qu'elle a dépensé ce mois-ci en "Loisirs"
+  // (dépenses personnelles catégorisées Loisirs), face à son budget défini
+  // dans Réglages.
+  function computeLoisirsUsage(state, monthKey) {
+    return state.people.map(p => {
+      const spent = state.expenses
+        .filter(e => e.personId === p.id
+          && e.type === 'perso'
+          && monthKeyOf(e.date) === monthKey
+          && (e.category || '').trim().toLowerCase() === 'loisirs')
+        .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      const budget = Number(p.loisirs) || 0;
+      const barPct = budget > 0 ? Math.min(100, (spent / budget) * 100) : (spent > 0 ? 100 : 0);
+      return { id: p.id, name: p.name, spent, budget, barPct, over: spent > budget };
+    });
+  }
+
   return {
     computeShares, computeMonthSummary, monthKeyOf, categoryBreakdown,
-    allMonthKeysWithActivity, totalMonthlyRecurringCommun, computeBudgetBreakdown
+    allMonthKeysWithActivity, totalMonthlyRecurringCommun, computeBudgetBreakdown,
+    computeLoisirsUsage
   };
 })();

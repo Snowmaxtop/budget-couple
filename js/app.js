@@ -71,6 +71,7 @@
     else if (currentView === 'expenses') renderExpenses();
     else if (currentView === 'recurring') renderRecurring();
     else if (currentView === 'history') renderHistory();
+    else if (currentView === 'personal') renderPersonal();
     else if (currentView === 'settings') ensureSettingsBuilt();
   }
 
@@ -79,6 +80,7 @@
     renderExpenses();
     renderRecurring();
     renderHistory();
+    renderPersonal();
   }
 
   function bindNav() {
@@ -88,21 +90,51 @@
     document.querySelectorAll('[data-goto]').forEach(btn => {
       btn.addEventListener('click', () => showView(btn.dataset.goto));
     });
-    document.getElementById('prev-month').addEventListener('click', () => { currentMonth = shiftMonth(currentMonth, -1); renderDashboard(); });
-    document.getElementById('next-month').addEventListener('click', () => { currentMonth = shiftMonth(currentMonth, 1); renderDashboard(); });
+    document.getElementById('prev-month').addEventListener('click', () => { currentMonth = shiftMonth(currentMonth, -1); renderDashboard(); renderPersonal(); });
+    document.getElementById('next-month').addEventListener('click', () => { currentMonth = shiftMonth(currentMonth, 1); renderDashboard(); renderPersonal(); });
+  }
+
+  /* ===================== Personnel : jauge loisirs ===================== */
+  function renderPersonal() {
+    document.getElementById('personal-month-label').textContent = formatMonthLabel(currentMonth);
+    const usage = Calculations.computeLoisirsUsage(state, currentMonth);
+    document.getElementById('personal-gauges').innerHTML = usage.map((u, i) => {
+      const remaining = u.budget - u.spent;
+      const captionClass = u.over ? 'over' : '';
+      const caption = u.budget <= 0
+        ? 'Aucun budget loisirs défini pour l\u2019instant (Réglages)'
+        : (u.over
+          ? `Dépassement de ${formatCurrency(u.spent - u.budget)}`
+          : `${formatCurrency(remaining)} restants`);
+      return `
+        <div class="gauge-card">
+          <div class="gauge-header">
+            <span class="avatar ${i === 0 ? 'avatar-a' : 'avatar-b'}">${initial(u.name)}</span>
+            <span class="name">${escapeHtml(u.name)}</span>
+          </div>
+          <div class="gauge-amounts">
+            <span class="spent">${formatCurrency(u.spent)}</span>
+            <span class="budget">/ ${formatCurrency(u.budget)}</span>
+          </div>
+          <div class="gauge-track"><div class="gauge-fill ${u.over ? 'over' : ''}" style="width:${u.barPct}%"></div></div>
+          <div class="gauge-caption ${captionClass}">${caption}</div>
+        </div>`;
+    }).join('');
   }
 
   /* ===================== Rendu : ligne de dépense partagée ===================== */
   function renderExpenseRowHTML(e) {
     const p = personById(e.personId);
     const typeBadge = e.type === 'commun' ? '<span class="badge badge-commun">Commune</span>' : '<span class="badge badge-perso">Perso</span>';
+    const splitBadge = e.splitMode === 'reimburse' ? '<span class="badge badge-split">Remboursement</span>'
+      : e.splitMode === '5050' ? '<span class="badge badge-split">50/50</span>' : '';
     const recurTag = e.recurringId ? ' · récurrente' : '';
     return `
       <div class="expense-row" data-id="${e.id}">
         <span class="avatar ${avatarClass(e.personId)}">${initial(p.name)}</span>
         <div class="expense-main">
           <div class="expense-label">${escapeHtml(e.label)}</div>
-          <div class="expense-meta">${typeBadge}<span>${escapeHtml(e.category || 'Autre')}${recurTag}</span></div>
+          <div class="expense-meta">${typeBadge}${splitBadge}<span>${escapeHtml(e.category || 'Autre')}${recurTag}</span></div>
         </div>
         <div class="expense-amount">${formatCurrency(e.amount)}</div>
       </div>`;
@@ -142,6 +174,24 @@
       const from = personById(summary.transfer.fromId);
       const to = personById(summary.transfer.toId);
       balEl.textContent = `${from.name} doit ${formatCurrency(summary.transfer.amount)} à ${to.name}`;
+    }
+
+    const breakdownEl = document.getElementById('balance-breakdown');
+    if (summary.reimburseTotal > 0 && (summary.communTransfer || summary.reimburseTransfer)) {
+      breakdownEl.hidden = false;
+      let rows = '';
+      if (summary.communTransfer) {
+        const from = personById(summary.communTransfer.fromId);
+        rows += `<div class="bd-row"><span>Dépenses communes</span><span>${formatCurrency(summary.communTransfer.amount)} dus par ${from.name}</span></div>`;
+      }
+      if (summary.reimburseTransfer) {
+        const from = personById(summary.reimburseTransfer.fromId);
+        rows += `<div class="bd-row"><span>À rembourser</span><span>${formatCurrency(summary.reimburseTransfer.amount)} dus par ${from.name}</span></div>`;
+      }
+      breakdownEl.innerHTML = rows;
+    } else {
+      breakdownEl.hidden = true;
+      breakdownEl.innerHTML = '';
     }
 
     const settleBtn = document.getElementById('settle-btn');
@@ -459,6 +509,21 @@
     document.querySelector('.field-group-recurring').hidden = !isRecurring;
   }
 
+  function updateSplitModeVisibility() {
+    document.getElementById('split-mode-row').hidden = expenseForm.type.value !== 'commun';
+  }
+
+  function setSplitModeUI(mode) {
+    expenseForm.splitFull.checked = mode === 'reimburse';
+    expenseForm.split5050.checked = mode === '5050';
+  }
+
+  function readSplitMode() {
+    if (expenseForm.splitFull.checked) return 'reimburse';
+    if (expenseForm.split5050.checked) return '5050';
+    return 'prorata';
+  }
+
   function openAddExpenseModal() {
     editingExpenseId = null;
     editingRecurringId = null;
@@ -475,6 +540,8 @@
     expenseForm.date.value = todayStr();
     expenseForm.type.value = 'commun';
     expenseForm.startDate.value = todayStr();
+    setSplitModeUI('prorata');
+    updateSplitModeVisibility();
     expenseModal.showModal();
   }
 
@@ -491,6 +558,8 @@
     expenseForm.personId.value = exp.personId;
     expenseForm.date.value = exp.date;
     expenseForm.date.disabled = !!exp.recurringId;
+    setSplitModeUI(exp.splitMode || 'prorata');
+    updateSplitModeVisibility();
 
     document.getElementById('expense-modal-title').textContent = 'Modifier la dépense';
     document.getElementById('recurring-toggle-row').hidden = true;
@@ -516,6 +585,8 @@
     expenseForm.frequency.value = rule.frequency;
     expenseForm.startDate.value = rule.startDate;
     expenseForm.endDate.value = rule.endDate || '';
+    setSplitModeUI(rule.splitMode || 'prorata');
+    updateSplitModeVisibility();
 
     document.getElementById('expense-modal-title').textContent = 'Modifier la récurrence';
     document.getElementById('recurring-toggle-row').hidden = true;
@@ -536,12 +607,13 @@
     const type = expenseForm.type.value;
     const personId = expenseForm.personId.value;
     const category = expenseForm.category.value.trim() || 'Autre';
+    const splitMode = type === 'commun' ? readSplitMode() : 'prorata';
     if (!label || !(amount > 0)) return;
 
     if (editingRecurringId) {
       const rule = state.recurring.find(r => r.id === editingRecurringId);
       Object.assign(rule, {
-        label, amount, type, personId, category,
+        label, amount, type, personId, category, splitMode,
         frequency: expenseForm.frequency.value,
         startDate: expenseForm.startDate.value || todayStr(),
         endDate: expenseForm.endDate.value || null
@@ -549,7 +621,7 @@
       runRecurringGeneration();
     } else if (expenseForm.isRecurring.value === 'true') {
       const rule = {
-        id: Recurring.genId(), label, amount, type, personId, category,
+        id: Recurring.genId(), label, amount, type, personId, category, splitMode,
         frequency: expenseForm.frequency.value,
         startDate: expenseForm.startDate.value || todayStr(),
         endDate: expenseForm.endDate.value || null,
@@ -559,11 +631,11 @@
       runRecurringGeneration();
     } else if (editingExpenseId) {
       const exp = state.expenses.find(x => x.id === editingExpenseId);
-      Object.assign(exp, { label, amount, type, personId, category });
+      Object.assign(exp, { label, amount, type, personId, category, splitMode });
       if (!exp.recurringId) exp.date = expenseForm.date.value || exp.date;
     } else {
       state.expenses.push({
-        id: Recurring.genId(), label, amount, type, personId, category,
+        id: Recurring.genId(), label, amount, type, personId, category, splitMode,
         date: expenseForm.date.value || todayStr(),
         recurringId: null, createdAt: new Date().toISOString()
       });
@@ -597,6 +669,9 @@
         setRecurringUI(isRec);
       });
     });
+    expenseForm.type.addEventListener('change', updateSplitModeVisibility);
+    expenseForm.splitFull.addEventListener('change', () => { if (expenseForm.splitFull.checked) expenseForm.split5050.checked = false; });
+    expenseForm.split5050.addEventListener('change', () => { if (expenseForm.split5050.checked) expenseForm.splitFull.checked = false; });
     expenseForm.addEventListener('submit', handleExpenseSubmit);
     document.getElementById('expense-delete-btn').addEventListener('click', handleExpenseDelete);
     document.getElementById('settle-btn').addEventListener('click', () => {
