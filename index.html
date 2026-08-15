@@ -66,6 +66,10 @@
       <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12.5" r="8" stroke="currentColor" stroke-width="1.8"/><path d="M12 8.5v4.3l3 1.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span>Historique</span>
     </button>
+    <button class="nav-item" data-view="personal" aria-label="Personnel">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.5v5l3.2 1.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Personnel</span>
+    </button>
     <button class="nav-item" data-view="settings" aria-label="Réglages">
       <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.1" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2.06 2.06 0 1 1-2.92 2.92l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56v.17a2.06 2.06 0 1 1-4.12 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2.06 2.06 0 1 1-2.92-2.92l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03h-.17a2.06 2.06 0 1 1 0-4.12h.09A1.7 1.7 0 0 0 5.15 7.3a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2.06 2.06 0 1 1 2.92-2.92l.06.06a1.7 1.7 0 0 0 1.87.34h.08A1.7 1.7 0 0 0 10.7 1.3v-.17a2.06 2.06 0 1 1 4.12 0v.09c.02.67.42 1.28 1.03 1.56h.08a1.7 1.7 0 0 0 1.87-.34l.06-.06a2.06 2.06 0 1 1 2.92 2.92l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08c.28.6.89 1 1.56 1.03h.17a2.06 2.06 0 1 1 0 4.12h-.09a1.7 1.7 0 0 0-1.56 1.03Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
       <span>Réglages</span>
@@ -102,6 +106,7 @@
 
       <div class="card balance-card" id="balance-card">
         <div class="balance-message" id="balance-message">—</div>
+        <div class="balance-breakdown" id="balance-breakdown" hidden></div>
         <div class="balance-actions">
           <button class="btn btn-primary" id="settle-btn">Marquer comme réglé</button>
           <div class="settled-note" id="settled-note" hidden></div>
@@ -158,6 +163,14 @@
         <p>Pas encore d'historique.</p>
         <p class="empty-sub">Chaque mois avec des dépenses communes apparaîtra ici.</p>
       </div>
+    </section>
+
+    <!-- ---------- Personnel ---------- -->
+    <section class="view" id="view-personal">
+      <div class="month-switcher">
+        <div class="month-label" id="personal-month-label">—</div>
+      </div>
+      <div id="personal-gauges"></div>
     </section>
 
     <!-- ---------- Réglages ---------- -->
@@ -281,6 +294,17 @@
     <div class="field-group-oneoff">
       <label class="field-label">Date
         <input type="date" name="date" class="input">
+      </label>
+    </div>
+
+    <div class="split-mode-row" id="split-mode-row">
+      <label class="checkbox-row">
+        <input type="checkbox" name="splitFull" id="split-full">
+        <span>L'autre me rembourse en entier</span>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" name="split5050" id="split-5050">
+        <span>Séparer 50/50 (plutôt qu'au prorata)</span>
       </label>
     </div>
 
