@@ -182,6 +182,24 @@
       </div>
 
       <div class="card">
+        <h2 class="section-title">Budget loisirs &amp; épargne</h2>
+        <p class="card-sub">Le budget loisirs se règle à la main. La part des dépenses communes récurrentes et l'épargne estimée se calculent automatiquement à partir de vos salaires et de vos dépenses récurrentes communes actives.</p>
+        <form id="settings-loisirs-form" class="stacked-form">
+          <div class="person-row">
+            <span class="avatar avatar-a">A</span>
+            <span class="budget-person-name" id="loisirs-name0">—</span>
+            <input type="number" name="loisirs0" class="input" placeholder="Budget loisirs €" min="0" step="1" inputmode="decimal">
+          </div>
+          <div class="person-row">
+            <span class="avatar avatar-b">B</span>
+            <span class="budget-person-name" id="loisirs-name1">—</span>
+            <input type="number" name="loisirs1" class="input" placeholder="Budget loisirs €" min="0" step="1" inputmode="decimal">
+          </div>
+        </form>
+        <div class="budget-breakdown" id="budget-breakdown"></div>
+      </div>
+
+      <div class="card">
         <h2 class="section-title">Sauvegarde</h2>
         <p class="card-sub">Vos données sont synchronisées via Firebase. Exportez un fichier JSON de temps en temps si vous voulez garder une copie de secours en dehors du cloud.</p>
         <div class="btn-row">
