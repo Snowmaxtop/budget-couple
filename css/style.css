@@ -121,17 +121,19 @@ h1, h2, h3, p { margin: 0; }
   display: flex; justify-content: space-around;
   background: var(--white);
   border-top: 1px solid var(--line);
-  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  padding: 6px 2px calc(6px + env(safe-area-inset-bottom));
   z-index: 20;
 }
 .nav-item {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
   background: none; border: none; color: var(--ink-faint);
-  font-size: .68rem; font-weight: 600;
-  padding: 6px 10px; border-radius: var(--radius-sm);
+  font-size: .62rem; font-weight: 600;
+  padding: 6px 4px; border-radius: var(--radius-sm);
   cursor: pointer;
+  flex: 1 1 0; min-width: 0;
 }
-.nav-item svg { width: 22px; height: 22px; }
+.nav-item svg { width: 20px; height: 20px; }
+.nav-item span { white-space: nowrap; }
 .nav-item.active { color: var(--rose-deep); }
 
 /* ===== Cards & sections ===== */
@@ -245,6 +247,7 @@ h1, h2, h3, p { margin: 0; }
 }
 .badge-commun { background: var(--rose-tint); color: var(--rose-deep); }
 .badge-perso { background: var(--surface-2); color: var(--ink-soft); }
+.badge-split { background: var(--sage-tint); color: var(--sage-deep); }
 .day-divider { color: var(--ink-faint); font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 14px 4px 4px; }
 .day-divider:first-child { padding-top: 2px; }
 
@@ -344,6 +347,30 @@ h1, h2, h3, p { margin: 0; }
   font-size: .8rem; font-weight: 600; text-align: left; margin: 16px 0 0;
 }
 
+/* ===== Balance card : détail communes / remboursements ===== */
+.balance-breakdown {
+  display: flex; flex-direction: column; gap: 4px;
+  margin: -6px 0 14px; font-size: .82rem; color: var(--ink-soft);
+}
+.balance-breakdown .bd-row { display: flex; justify-content: space-between; }
+.balance-breakdown .bd-row span:last-child { font-weight: 700; color: var(--ink); }
+
+/* ===== Split mode (case à cocher dans la modale dépense) ===== */
+.split-mode-row { display: flex; flex-direction: column; gap: 10px; }
+
+/* ===== Personnel : jauge loisirs ===== */
+.gauge-card { background: var(--white); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 14px; box-shadow: var(--shadow-sm); }
+.gauge-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.gauge-header .name { font-weight: 700; font-size: .92rem; }
+.gauge-amounts { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; font-size: .85rem; }
+.gauge-amounts .spent { font-weight: 800; font-size: 1.1rem; color: var(--ink); }
+.gauge-amounts .budget { color: var(--ink-soft); }
+.gauge-track { background: var(--surface-2); border-radius: 100px; height: 14px; overflow: hidden; }
+.gauge-fill { height: 100%; border-radius: 100px; background: var(--sage); transition: width .3s ease; }
+.gauge-fill.over { background: var(--danger); }
+.gauge-caption { margin-top: 8px; font-size: .8rem; color: var(--ink-soft); }
+.gauge-caption.over { color: var(--danger); font-weight: 700; }
+
 /* ===== Modal ===== */
 dialog {
   border: none; border-radius: var(--radius-lg) var(--radius-lg) 0 0;
@@ -386,7 +413,7 @@ dialog::backdrop { background: rgba(35,32,29,.35); }
     background: none; border: none; padding: 12px;
     height: auto; max-height: calc(100vh - 66px);
   }
-  .nav-item { flex-direction: row; justify-content: flex-start; gap: 10px; font-size: .84rem; padding: 11px 14px; }
+  .nav-item { flex: 0 0 auto; flex-direction: row; justify-content: flex-start; gap: 10px; font-size: .84rem; padding: 11px 14px; }
   .nav-item.active { background: var(--white); box-shadow: var(--shadow-sm); }
   .content { flex: 1; max-width: 640px; padding: 86px 24px 60px; margin: 0 auto; }
   .fab { right: calc(50% - 320px + 20px); }
