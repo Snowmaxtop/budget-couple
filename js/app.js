@@ -10,6 +10,7 @@
   let editingRecurringId = null;
   let pushTimer = null;
   let settingsBuilt = false;
+  let myPersonId = null;
   const filters = { type: 'all', personId: 'all', month: currentMonth };
 
   const expenseModal = document.getElementById('expense-modal');
@@ -71,7 +72,6 @@
     else if (currentView === 'expenses') renderExpenses();
     else if (currentView === 'recurring') renderRecurring();
     else if (currentView === 'history') renderHistory();
-    else if (currentView === 'personal') renderPersonal();
     else if (currentView === 'settings') ensureSettingsBuilt();
   }
 
@@ -80,7 +80,6 @@
     renderExpenses();
     renderRecurring();
     renderHistory();
-    renderPersonal();
   }
 
   function bindNav() {
@@ -90,44 +89,87 @@
     document.querySelectorAll('[data-goto]').forEach(btn => {
       btn.addEventListener('click', () => showView(btn.dataset.goto));
     });
-    document.getElementById('prev-month').addEventListener('click', () => { currentMonth = shiftMonth(currentMonth, -1); renderDashboard(); renderPersonal(); });
-    document.getElementById('next-month').addEventListener('click', () => { currentMonth = shiftMonth(currentMonth, 1); renderDashboard(); renderPersonal(); });
+    document.getElementById('prev-month').addEventListener('click', () => { currentMonth = shiftMonth(currentMonth, -1); renderDashboard(); });
+    document.getElementById('next-month').addEventListener('click', () => { currentMonth = shiftMonth(currentMonth, 1); renderDashboard(); });
   }
 
-  /* ===================== Personnel : jauge loisirs ===================== */
-  function renderPersonal() {
-    document.getElementById('personal-month-label').textContent = formatMonthLabel(currentMonth);
-    const usage = Calculations.computeLoisirsUsage(state, currentMonth);
-    document.getElementById('personal-gauges').innerHTML = usage.map((u, i) => {
-      const remaining = u.budget - u.spent;
-      const captionClass = u.over ? 'over' : '';
-      const caption = u.budget <= 0
-        ? 'Aucun budget loisirs défini pour l\u2019instant (Réglages)'
-        : (u.over
-          ? `Dépassement de ${formatCurrency(u.spent - u.budget)}`
-          : `${formatCurrency(remaining)} restants`);
-      return `
-        <div class="gauge-card">
-          <div class="gauge-header">
-            <span class="avatar ${i === 0 ? 'avatar-a' : 'avatar-b'}">${initial(u.name)}</span>
-            <span class="name">${escapeHtml(u.name)}</span>
-          </div>
-          <div class="gauge-amounts">
-            <span class="spent">${formatCurrency(u.spent)}</span>
-            <span class="budget">/ ${formatCurrency(u.budget)}</span>
-          </div>
-          <div class="gauge-track"><div class="gauge-fill ${u.over ? 'over' : ''}" style="width:${u.barPct}%"></div></div>
-          <div class="gauge-caption ${captionClass}">${caption}</div>
-        </div>`;
-    }).join('');
+  function bindPersonSwitch() {
+    document.querySelectorAll('.person-switch-opt').forEach((btn, i) => {
+      btn.addEventListener('click', () => {
+        const p = state.people[i];
+        if (!p) return;
+        myPersonId = p.id;
+        try { localStorage.setItem('myPersonId', p.id); } catch (e) { /* ignore */ }
+        renderDashboard();
+      });
+    });
+  }
+
+  /* ===================== Personnel (haut de l'Accueil) ===================== */
+  function renderPersonalSection() {
+    if (!myPersonId || !state.people.some(p => p.id === myPersonId)) {
+      myPersonId = state.people[0] ? state.people[0].id : null;
+    }
+    document.querySelectorAll('.person-switch-opt').forEach((btn, i) => {
+      const p = state.people[i];
+      if (!p) return;
+      btn.textContent = p.name;
+      btn.classList.toggle('active', p.id === myPersonId);
+    });
+
+    const person = personById(myPersonId);
+    const i = personIndex(myPersonId);
+
+    const usage = Calculations.computeLoisirsUsage(state, currentMonth).find(u => u.id === myPersonId)
+      || { spent: 0, budget: 0, barPct: 0, over: false };
+    const remaining = usage.budget - usage.spent;
+    const caption = usage.budget <= 0
+      ? 'Aucun budget loisirs défini pour l\u2019instant (Réglages)'
+      : (usage.over ? `Dépassement de ${formatCurrency(usage.spent - usage.budget)}` : `${formatCurrency(remaining)} restants`);
+    document.getElementById('personal-loisirs-card').innerHTML = `
+      <div class="gauge-header">
+        <span class="avatar ${i === 1 ? 'avatar-b' : 'avatar-a'}">${initial(person.name)}</span>
+        <span class="name">${escapeHtml(person.name)} · Loisirs</span>
+      </div>
+      <div class="gauge-amounts">
+        <span class="spent">${formatCurrency(usage.spent)}</span>
+        <span class="budget">/ ${formatCurrency(usage.budget)}</span>
+      </div>
+      <div class="gauge-track"><div class="gauge-fill ${usage.over ? 'over' : ''}" style="width:${usage.barPct}%"></div></div>
+      <div class="gauge-caption ${usage.over ? 'over' : ''}">${caption}</div>`;
+
+    const persoExpenses = state.expenses
+      .filter(e => e.personId === myPersonId && e.type === 'perso' && !Calculations.isForcedCommun(e) && Calculations.monthKeyOf(e.date) === currentMonth)
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    document.getElementById('personal-expenses-list').innerHTML = persoExpenses.length
+      ? persoExpenses.map(renderExpenseRowHTML).join('')
+      : '<p class="card-sub">Aucune dépense personnelle ce mois-ci.</p>';
+
+    const summary = Calculations.computeMonthSummary(state, currentMonth);
+    const bal = summary.balance[myPersonId] || 0;
+    const owedEl = document.getElementById('personal-owed');
+    if (bal >= -0.005) {
+      owedEl.innerHTML = bal > 0.005
+        ? `<p class="card-sub">Rien à verser — on vous doit ${formatCurrency(bal)}.</p>`
+        : '<p class="card-sub">Vous êtes à l\u2019équilibre.</p>';
+    } else {
+      const toVerser = -bal;
+      const communDue = (summary.communDue && summary.communDue[myPersonId]) || 0;
+      const reimburseDue = (summary.reimburseDue && summary.reimburseDue[myPersonId]) || 0;
+      owedEl.innerHTML = `
+        <div class="hero-amount" style="font-size:1.6rem; margin: 2px 0 12px;">${formatCurrency(toVerser)}</div>
+        <div class="budget-line"><span>Dépenses communes (part, dont alimentation)</span><span>${formatCurrency(communDue)}</span></div>
+        <div class="budget-line"><span>Remboursements dus</span><span>${formatCurrency(reimburseDue)}</span></div>`;
+    }
   }
 
   /* ===================== Rendu : ligne de dépense partagée ===================== */
   function renderExpenseRowHTML(e) {
     const p = personById(e.personId);
-    const typeBadge = e.type === 'commun' ? '<span class="badge badge-commun">Commune</span>' : '<span class="badge badge-perso">Perso</span>';
-    const splitBadge = e.splitMode === 'reimburse' ? '<span class="badge badge-split">Remboursement</span>'
-      : e.splitMode === '5050' ? '<span class="badge badge-split">50/50</span>' : '';
+    const forcedFood = Calculations.isForcedCommun(e);
+    const typeBadge = (e.type === 'commun' || forcedFood) ? '<span class="badge badge-commun">Commune</span>' : '<span class="badge badge-perso">Perso</span>';
+    const split = Calculations.effectiveSplit(e);
+    const splitBadge = (!forcedFood && split.mode === 'fixed') ? `<span class="badge badge-split">${split.percent}% remb.</span>` : '';
     const recurTag = e.recurringId ? ' · récurrente' : '';
     return `
       <div class="expense-row" data-id="${e.id}">
@@ -149,6 +191,7 @@
 
   /* ===================== Dashboard ===================== */
   function renderDashboard() {
+    renderPersonalSection();
     document.getElementById('month-label').textContent = formatMonthLabel(currentMonth);
     const summary = Calculations.computeMonthSummary(state, currentMonth);
     const [pA, pB] = state.people;
@@ -513,15 +556,21 @@
     document.getElementById('split-mode-row').hidden = expenseForm.type.value !== 'commun';
   }
 
-  function setSplitModeUI(mode) {
-    expenseForm.splitFull.checked = mode === 'reimburse';
-    expenseForm.split5050.checked = mode === '5050';
+  function setSplitModeUI(split) {
+    const isFixed = split.mode === 'fixed';
+    const percent = split.percent != null ? split.percent : 50;
+    expenseForm.splitFixed.checked = isFixed;
+    expenseForm.splitPercent.value = isFixed ? percent : 50;
+    document.getElementById('split-percent-row').hidden = !isFixed;
+    document.getElementById('split-percent-label').textContent = expenseForm.splitPercent.value + '%';
   }
 
   function readSplitMode() {
-    if (expenseForm.splitFull.checked) return 'reimburse';
-    if (expenseForm.split5050.checked) return '5050';
-    return 'prorata';
+    return expenseForm.splitFixed.checked ? 'fixed' : 'prorata';
+  }
+
+  function readSplitPercent() {
+    return parseInt(expenseForm.splitPercent.value, 10) || 0;
   }
 
   function openAddExpenseModal() {
@@ -540,7 +589,7 @@
     expenseForm.date.value = todayStr();
     expenseForm.type.value = 'commun';
     expenseForm.startDate.value = todayStr();
-    setSplitModeUI('prorata');
+    setSplitModeUI({ mode: 'prorata' });
     updateSplitModeVisibility();
     expenseModal.showModal();
   }
@@ -558,7 +607,7 @@
     expenseForm.personId.value = exp.personId;
     expenseForm.date.value = exp.date;
     expenseForm.date.disabled = !!exp.recurringId;
-    setSplitModeUI(exp.splitMode || 'prorata');
+    setSplitModeUI(Calculations.effectiveSplit(exp));
     updateSplitModeVisibility();
 
     document.getElementById('expense-modal-title').textContent = 'Modifier la dépense';
@@ -585,7 +634,7 @@
     expenseForm.frequency.value = rule.frequency;
     expenseForm.startDate.value = rule.startDate;
     expenseForm.endDate.value = rule.endDate || '';
-    setSplitModeUI(rule.splitMode || 'prorata');
+    setSplitModeUI(Calculations.effectiveSplit(rule));
     updateSplitModeVisibility();
 
     document.getElementById('expense-modal-title').textContent = 'Modifier la récurrence';
@@ -604,16 +653,21 @@
     e.preventDefault();
     const label = expenseForm.label.value.trim();
     const amount = parseFloat(expenseForm.amount.value);
-    const type = expenseForm.type.value;
-    const personId = expenseForm.personId.value;
     const category = expenseForm.category.value.trim() || 'Autre';
-    const splitMode = type === 'commun' ? readSplitMode() : 'prorata';
+    const forcedCommun = Calculations.isForcedCommun({ category });
+    const type = forcedCommun ? 'commun' : expenseForm.type.value;
+    const personId = expenseForm.personId.value;
+    let splitMode = 'prorata', splitPercent = null;
+    if (type === 'commun' && !forcedCommun && readSplitMode() === 'fixed') {
+      splitMode = 'fixed';
+      splitPercent = readSplitPercent();
+    }
     if (!label || !(amount > 0)) return;
 
     if (editingRecurringId) {
       const rule = state.recurring.find(r => r.id === editingRecurringId);
       Object.assign(rule, {
-        label, amount, type, personId, category, splitMode,
+        label, amount, type, personId, category, splitMode, splitPercent,
         frequency: expenseForm.frequency.value,
         startDate: expenseForm.startDate.value || todayStr(),
         endDate: expenseForm.endDate.value || null
@@ -621,7 +675,7 @@
       runRecurringGeneration();
     } else if (expenseForm.isRecurring.value === 'true') {
       const rule = {
-        id: Recurring.genId(), label, amount, type, personId, category, splitMode,
+        id: Recurring.genId(), label, amount, type, personId, category, splitMode, splitPercent,
         frequency: expenseForm.frequency.value,
         startDate: expenseForm.startDate.value || todayStr(),
         endDate: expenseForm.endDate.value || null,
@@ -631,11 +685,11 @@
       runRecurringGeneration();
     } else if (editingExpenseId) {
       const exp = state.expenses.find(x => x.id === editingExpenseId);
-      Object.assign(exp, { label, amount, type, personId, category, splitMode });
+      Object.assign(exp, { label, amount, type, personId, category, splitMode, splitPercent });
       if (!exp.recurringId) exp.date = expenseForm.date.value || exp.date;
     } else {
       state.expenses.push({
-        id: Recurring.genId(), label, amount, type, personId, category, splitMode,
+        id: Recurring.genId(), label, amount, type, personId, category, splitMode, splitPercent,
         date: expenseForm.date.value || todayStr(),
         recurringId: null, createdAt: new Date().toISOString()
       });
@@ -670,8 +724,12 @@
       });
     });
     expenseForm.type.addEventListener('change', updateSplitModeVisibility);
-    expenseForm.splitFull.addEventListener('change', () => { if (expenseForm.splitFull.checked) expenseForm.split5050.checked = false; });
-    expenseForm.split5050.addEventListener('change', () => { if (expenseForm.split5050.checked) expenseForm.splitFull.checked = false; });
+    expenseForm.splitFixed.addEventListener('change', () => {
+      document.getElementById('split-percent-row').hidden = !expenseForm.splitFixed.checked;
+    });
+    expenseForm.splitPercent.addEventListener('input', () => {
+      document.getElementById('split-percent-label').textContent = expenseForm.splitPercent.value + '%';
+    });
     expenseForm.addEventListener('submit', handleExpenseSubmit);
     document.getElementById('expense-delete-btn').addEventListener('click', handleExpenseDelete);
     document.getElementById('settle-btn').addEventListener('click', () => {
@@ -708,6 +766,8 @@
   /* ===================== Démarrage ===================== */
   function startAppFor() {
     firstSnapshotSeen = false;
+    try { myPersonId = localStorage.getItem('myPersonId') || (state.people[0] && state.people[0].id) || null; }
+    catch (e) { myPersonId = state.people[0] ? state.people[0].id : null; }
     runRecurringGeneration();
     Storage.save(state);
     showApp();
@@ -725,6 +785,7 @@
     bindRecurringList();
     bindHistoryList();
     bindModal();
+    bindPersonSwitch();
     registerServiceWorker();
 
     if (!window.FirebaseSync) {

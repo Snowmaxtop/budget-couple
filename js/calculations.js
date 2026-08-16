@@ -19,15 +19,36 @@ const Calculations = (() => {
     return dateStr ? dateStr.slice(0, 7) : '';
   }
 
+  // Règle Alimentation : toute dépense catégorisée "Alimentation" est
+  // toujours traitée comme commune au prorata, quel que soit le type ou le
+  // mode de répartition enregistré (protège même d'anciennes données mal
+  // catégorisées).
+  function isForcedCommun(e) {
+    return (e.category || '').trim().toLowerCase() === 'alimentation';
+  }
+
+  // Détermine le mode de répartition effectif d'une dépense commune :
+  // { mode: 'prorata' } ou { mode: 'fixed', percent: 0-100 } où percent est
+  // le pourcentage du montant remboursé par l'AUTRE personne (100 = l'autre
+  // rembourse tout, 50 = moitié-moitié, 0 = rien à partager). Comprend aussi
+  // les anciens formats ('5050', 'reimburse') pour rester compatible avec
+  // des dépenses déjà enregistrées avant l'introduction du curseur.
+  function effectiveSplit(e) {
+    if (isForcedCommun(e)) return { mode: 'prorata' };
+    if (e.splitMode === 'fixed') return { mode: 'fixed', percent: e.splitPercent != null ? Number(e.splitPercent) : 100 };
+    if (e.splitMode === 'reimburse') return { mode: 'fixed', percent: 100 };
+    if (e.splitMode === '5050') return { mode: 'fixed', percent: 50 };
+    return { mode: 'prorata' };
+  }
+
   // Résumé complet d'un mois : total commun, part due de chacun, ce que chacun a
   // réellement avancé, et qui doit combien à qui.
   // Si le mois est déjà "réglé", on réutilise les % figés à ce moment-là plutôt
   // que les % courants (utile si les salaires ont changé depuis).
-  // Chaque dépense commune a un splitMode : 'prorata' (défaut, au % des
-  // salaires), '5050' (moitié-moitié), ou 'reimburse' (l'autre personne
-  // rembourse la totalité). Le résumé sépare aussi les totaux/soldes en deux
-  // groupes pour l'affichage : "communes" (prorata + 50/50) et
-  // "remboursements" (reimburse), en plus du solde global combiné.
+  // Le résumé sépare aussi les totaux/soldes en deux groupes pour
+  // l'affichage : "communes" (prorata, y compris Alimentation forcée) et
+  // "remboursements" (pourcentage fixe défini par le curseur), en plus du
+  // solde global combiné.
   function computeMonthSummary(state, monthKey) {
     const people = state.people;
     const settlement = state.settlements[monthKey];
@@ -36,18 +57,19 @@ const Calculations = (() => {
       : computeShares(people);
 
     const monthExpenses = state.expenses
-      .filter(e => e.type === 'commun' && monthKeyOf(e.date) === monthKey)
+      .filter(e => (e.type === 'commun' || isForcedCommun(e)) && monthKeyOf(e.date) === monthKey)
       .sort((a, b) => (a.date < b.date ? 1 : -1));
 
     const total = monthExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
     function dueContribution(e, due) {
       const amount = Number(e.amount) || 0;
-      const mode = e.splitMode || 'prorata';
-      if (mode === 'reimburse') {
-        people.forEach(p => { due[p.id] += (p.id === e.personId) ? 0 : amount; });
-      } else if (mode === '5050') {
-        people.forEach(p => { due[p.id] += amount * 0.5; });
+      const split = effectiveSplit(e);
+      if (split.mode === 'fixed') {
+        const pct = split.percent / 100;
+        people.forEach(p => {
+          due[p.id] += (p.id === e.personId) ? amount * (1 - pct) : amount * pct;
+        });
       } else {
         people.forEach(p => { due[p.id] += amount * (shares[p.id] || 0); });
       }
@@ -76,8 +98,8 @@ const Calculations = (() => {
         : { fromId: a.id, toId: b.id, amount: -diff };
     }
 
-    const reimburseExpenses = monthExpenses.filter(e => e.splitMode === 'reimburse');
-    const communExpenses = monthExpenses.filter(e => e.splitMode !== 'reimburse');
+    const reimburseExpenses = monthExpenses.filter(e => effectiveSplit(e).mode === 'fixed');
+    const communExpenses = monthExpenses.filter(e => effectiveSplit(e).mode !== 'fixed');
     const communBucket = computeBucket(communExpenses);
     const reimburseBucket = computeBucket(reimburseExpenses);
 
@@ -95,8 +117,8 @@ const Calculations = (() => {
 
     return {
       monthKey, shares, total, paidBy, due, balance, transfer,
-      communTotal: communBucket.total, communTransfer,
-      reimburseTotal: reimburseBucket.total, reimburseTransfer,
+      communTotal: communBucket.total, communTransfer, communDue: communBucket.due,
+      reimburseTotal: reimburseBucket.total, reimburseTransfer, reimburseDue: reimburseBucket.due,
       expenses: monthExpenses,
       settled: !!(settlement && settlement.settled),
       settledDate: settlement ? settlement.settledDate : null
@@ -114,7 +136,7 @@ const Calculations = (() => {
 
   function allMonthKeysWithActivity(state) {
     const keys = new Set();
-    state.expenses.forEach(e => { if (e.type === 'commun') keys.add(monthKeyOf(e.date)); });
+    state.expenses.forEach(e => { if (e.type === 'commun' || isForcedCommun(e)) keys.add(monthKeyOf(e.date)); });
     Object.keys(state.settlements).forEach(k => keys.add(k));
     return Array.from(keys).filter(Boolean).sort().reverse();
   }
@@ -133,7 +155,7 @@ const Calculations = (() => {
   // abonnements partagés, etc.), toutes fréquences ramenées au mois.
   function totalMonthlyRecurringCommun(state) {
     return (state.recurring || [])
-      .filter(r => r.type === 'commun' && r.active !== false)
+      .filter(r => (r.type === 'commun' || isForcedCommun(r)) && r.active !== false)
       .reduce((sum, r) => sum + monthlyEquivalentAmount(r), 0);
   }
 
@@ -160,6 +182,7 @@ const Calculations = (() => {
       const spent = state.expenses
         .filter(e => e.personId === p.id
           && e.type === 'perso'
+          && !isForcedCommun(e)
           && monthKeyOf(e.date) === monthKey
           && (e.category || '').trim().toLowerCase() === 'loisirs')
         .reduce((s, e) => s + (Number(e.amount) || 0), 0);
@@ -172,6 +195,6 @@ const Calculations = (() => {
   return {
     computeShares, computeMonthSummary, monthKeyOf, categoryBreakdown,
     allMonthKeysWithActivity, totalMonthlyRecurringCommun, computeBudgetBreakdown,
-    computeLoisirsUsage
+    computeLoisirsUsage, isForcedCommun, effectiveSplit
   };
 })();
