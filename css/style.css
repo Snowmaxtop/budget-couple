@@ -211,6 +211,8 @@ h1, h2, h3, p { margin: 0; }
 
 /* ===== Balance card ===== */
 .balance-card { text-align: center; }
+.balance-block + .balance-block { margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--line); }
+.balance-block-title { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-faint); margin-bottom: 8px; }
 .balance-message { font-size: 1.02rem; font-weight: 700; margin-bottom: 14px; line-height: 1.4; }
 .balance-actions { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .settled-note { color: var(--sage-deep); font-size: .82rem; font-weight: 600; }
@@ -346,14 +348,6 @@ h1, h2, h3, p { margin: 0; }
   border-radius: var(--radius-sm); padding: 9px 12px;
   font-size: .8rem; font-weight: 600; text-align: left; margin: 16px 0 0;
 }
-
-/* ===== Balance card : détail communes / remboursements ===== */
-.balance-breakdown {
-  display: flex; flex-direction: column; gap: 4px;
-  margin: -6px 0 14px; font-size: .82rem; color: var(--ink-soft);
-}
-.balance-breakdown .bd-row { display: flex; justify-content: space-between; }
-.balance-breakdown .bd-row span:last-child { font-weight: 700; color: var(--ink); }
 
 /* ===== Split mode (case à cocher + curseur dans la modale dépense) ===== */
 .split-mode-row { display: flex; flex-direction: column; gap: 10px; }
