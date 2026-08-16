@@ -41,20 +41,38 @@ const Calculations = (() => {
     return { mode: 'prorata' };
   }
 
-  // Résumé complet d'un mois : total commun, part due de chacun, ce que chacun a
-  // réellement avancé, et qui doit combien à qui.
-  // Si le mois est déjà "réglé", on réutilise les % figés à ce moment-là plutôt
-  // que les % courants (utile si les salaires ont changé depuis).
-  // Le résumé sépare aussi les totaux/soldes en deux groupes pour
-  // l'affichage : "communes" (prorata, y compris Alimentation forcée) et
-  // "remboursements" (pourcentage fixe défini par le curseur), en plus du
-  // solde global combiné.
+  // Normalise l'objet de règlement d'un mois vers le nouveau format à deux
+  // volets { recurring, rest }, chacun avec son propre settled/settledDate/
+  // shares. Reste compatible avec l'ancien format à plat { settled,
+  // settledDate, shares } enregistré avant l'introduction des deux virements
+  // séparés : dans ce cas, les deux volets héritent du même règlement.
+  function normalizeSettlement(raw) {
+    const empty = () => ({ settled: false, settledDate: null, shares: null });
+    if (!raw) return { recurring: empty(), rest: empty() };
+    if (raw.recurring || raw.rest) {
+      return { recurring: raw.recurring || empty(), rest: raw.rest || empty() };
+    }
+    if (raw.settled) {
+      const block = { settled: true, settledDate: raw.settledDate || null, shares: raw.shares || null };
+      return { recurring: { ...block }, rest: { ...block } };
+    }
+    return { recurring: empty(), rest: empty() };
+  }
+
+  // Résumé complet d'un mois. Les dépenses communes sont réparties en deux
+  // groupes correspondant aux deux virements du couple : "récurrentes"
+  // (générées par une dépense récurrente — loyer, abonnements... à régler en
+  // début de mois) et "reste" (dépenses ponctuelles au fil du mois). Chaque
+  // groupe a son propre total, solde, et peut être marqué réglé
+  // indépendamment (avec ses propres % de répartition figés si besoin).
+  // Le detail prorata/pourcentage fixe (effectiveSplit) reste utilisé pour
+  // calculer correctement la part de chacun À L'INTÉRIEUR de chaque groupe.
   function computeMonthSummary(state, monthKey) {
     const people = state.people;
-    const settlement = state.settlements[monthKey];
-    const shares = (settlement && settlement.settled && settlement.shares)
-      ? settlement.shares
-      : computeShares(people);
+    const settlement = normalizeSettlement(state.settlements[monthKey]);
+    const liveShares = computeShares(people);
+    const recurringShares = (settlement.recurring.settled && settlement.recurring.shares) ? settlement.recurring.shares : liveShares;
+    const restShares = (settlement.rest.settled && settlement.rest.shares) ? settlement.rest.shares : liveShares;
 
     const monthExpenses = state.expenses
       .filter(e => (e.type === 'commun' || isForcedCommun(e)) && monthKeyOf(e.date) === monthKey)
@@ -62,7 +80,7 @@ const Calculations = (() => {
 
     const total = monthExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
-    function dueContribution(e, due) {
+    function dueContribution(e, due, shares) {
       const amount = Number(e.amount) || 0;
       const split = effectiveSplit(e);
       if (split.mode === 'fixed') {
@@ -75,12 +93,12 @@ const Calculations = (() => {
       }
     }
 
-    function computeBucket(list) {
+    function computeBucket(list, shares) {
       const paid = {}, due = {};
       people.forEach(p => { paid[p.id] = 0; due[p.id] = 0; });
       list.forEach(e => {
         paid[e.personId] = (paid[e.personId] || 0) + (Number(e.amount) || 0);
-        dueContribution(e, due);
+        dueContribution(e, due, shares);
       });
       const bTotal = list.reduce((s, e) => s + (Number(e.amount) || 0), 0);
       const balance = {};
@@ -98,30 +116,30 @@ const Calculations = (() => {
         : { fromId: a.id, toId: b.id, amount: -diff };
     }
 
-    const reimburseExpenses = monthExpenses.filter(e => effectiveSplit(e).mode === 'fixed');
-    const communExpenses = monthExpenses.filter(e => effectiveSplit(e).mode !== 'fixed');
-    const communBucket = computeBucket(communExpenses);
-    const reimburseBucket = computeBucket(reimburseExpenses);
+    const recurringExpenses = monthExpenses.filter(e => !!e.recurringId);
+    const restExpenses = monthExpenses.filter(e => !e.recurringId);
+    const recurringBucket = computeBucket(recurringExpenses, recurringShares);
+    const restBucket = computeBucket(restExpenses, restShares);
 
     const paidBy = {}, due = {};
     people.forEach(p => {
-      paidBy[p.id] = communBucket.paid[p.id] + reimburseBucket.paid[p.id];
-      due[p.id] = communBucket.due[p.id] + reimburseBucket.due[p.id];
+      paidBy[p.id] = recurringBucket.paid[p.id] + restBucket.paid[p.id];
+      due[p.id] = recurringBucket.due[p.id] + restBucket.due[p.id];
     });
     const balance = {};
     people.forEach(p => { balance[p.id] = paidBy[p.id] - due[p.id]; });
 
     const transfer = bucketTransfer(balance);
-    const communTransfer = bucketTransfer(communBucket.balance);
-    const reimburseTransfer = bucketTransfer(reimburseBucket.balance);
+    const recurringTransfer = bucketTransfer(recurringBucket.balance);
+    const restTransfer = bucketTransfer(restBucket.balance);
 
     return {
-      monthKey, shares, total, paidBy, due, balance, transfer,
-      communTotal: communBucket.total, communTransfer, communDue: communBucket.due,
-      reimburseTotal: reimburseBucket.total, reimburseTransfer, reimburseDue: reimburseBucket.due,
-      expenses: monthExpenses,
-      settled: !!(settlement && settlement.settled),
-      settledDate: settlement ? settlement.settledDate : null
+      monthKey, total, paidBy, due, balance, transfer,
+      recurringTotal: recurringBucket.total, recurringTransfer, recurringDue: recurringBucket.due,
+      recurringSettled: settlement.recurring.settled, recurringSettledDate: settlement.recurring.settledDate,
+      restTotal: restBucket.total, restTransfer, restDue: restBucket.due,
+      restSettled: settlement.rest.settled, restSettledDate: settlement.rest.settledDate,
+      expenses: monthExpenses
     };
   }
 
@@ -195,6 +213,6 @@ const Calculations = (() => {
   return {
     computeShares, computeMonthSummary, monthKeyOf, categoryBreakdown,
     allMonthKeysWithActivity, totalMonthlyRecurringCommun, computeBudgetBreakdown,
-    computeLoisirsUsage, isForcedCommun, effectiveSplit
+    computeLoisirsUsage, isForcedCommun, effectiveSplit, normalizeSettlement
   };
 })();

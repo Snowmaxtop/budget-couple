@@ -47,6 +47,11 @@
     const d = new Date(y, m - 1 + delta, 1);
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
   }
+  function endOfMonth(monthKey) {
+    const [y, m] = monthKey.split('-').map(Number);
+    const d = new Date(y, m, 0); // jour 0 du mois suivant = dernier jour du mois courant
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
 
   /* ===================== Persistance ===================== */
   function persist() {
@@ -54,8 +59,15 @@
     scheduleFirestoreWrite();
   }
 
+  // Génère les échéances jusqu'à la fin du mois AFFICHÉ (pas seulement
+  // jusqu'à aujourd'hui) : une récurrence dont le jour n'est pas encore
+  // passé ce mois-ci (ex. loyer le 5, on est le 3) doit quand même compter
+  // dans les dépenses communes et les remboursements du mois en cours. Si le
+  // mois affiché est déjà passé, ça revient simplement à générer jusqu'à
+  // aujourd'hui comme avant.
   function runRecurringGeneration() {
-    return Recurring.generateMissingInstances(state, todayStr());
+    const boundary = endOfMonth(currentMonth) > todayStr() ? endOfMonth(currentMonth) : todayStr();
+    return Recurring.generateMissingInstances(state, boundary);
   }
 
   // Filet de sécurité : régénère les échéances récurrentes manquantes à
@@ -158,7 +170,7 @@
     // ponctuelles + récurrentes déjà générées, prorata et remboursements
     // confondus) face à l'estimation mensuelle basée sur les récurrences
     // actives (calculée dans Réglages → Budget loisirs & épargne).
-    const communActual = (summary.communDue[myPersonId] || 0) + (summary.reimburseDue[myPersonId] || 0);
+    const communActual = summary.due[myPersonId] || 0;
     const budgetEstimate = Calculations.computeBudgetBreakdown(state).find(b => b.id === myPersonId) || { commun: 0 };
     const communBudget = budgetEstimate.commun || 0;
     const communBarPct = communBudget > 0 ? Math.min(100, (communActual / communBudget) * 100) : (communActual > 0 ? 100 : 0);
@@ -187,21 +199,23 @@
       ? persoExpenses.map(renderExpenseRowHTML).join('')
       : '<p class="card-sub">Aucune dépense personnelle ce mois-ci.</p>';
 
-    const bal = summary.balance[myPersonId] || 0;
     const owedEl = document.getElementById('personal-owed');
-    if (bal >= -0.005) {
-      owedEl.innerHTML = bal > 0.005
-        ? `<p class="card-sub">Rien à verser — on vous doit ${formatCurrency(bal)}.</p>`
-        : '<p class="card-sub">Vous êtes à l\u2019équilibre.</p>';
-    } else {
-      const toVerser = -bal;
-      const communDue = (summary.communDue && summary.communDue[myPersonId]) || 0;
-      const reimburseDue = (summary.reimburseDue && summary.reimburseDue[myPersonId]) || 0;
-      owedEl.innerHTML = `
-        <div class="hero-amount" style="font-size:1.6rem; margin: 2px 0 12px;">${formatCurrency(toVerser)}</div>
-        <div class="budget-line"><span>Dépenses communes (part, dont alimentation)</span><span>${formatCurrency(communDue)}</span></div>
-        <div class="budget-line"><span>Remboursements dus</span><span>${formatCurrency(reimburseDue)}</span></div>`;
-    }
+    const recurringLine = personTransferLine(summary.recurringTransfer, myPersonId, summary.recurringSettled, summary.recurringSettledDate, summary.recurringTotal);
+    const restLine = personTransferLine(summary.restTransfer, myPersonId, summary.restSettled, summary.restSettledDate, summary.restTotal);
+    owedEl.innerHTML = `
+      <div class="budget-line"><span>Récurrentes (début de mois)</span><span>${recurringLine}</span></div>
+      <div class="budget-line"><span>Reste du mois (ponctuelles)</span><span>${restLine}</span></div>`;
+  }
+
+  // Texte affiché pour la part d'UNE personne dans UN volet (récurrentes ou
+  // reste) : ce qu'elle doit verser, ce qu'on lui doit, ou la date à
+  // laquelle ce volet a déjà été réglé.
+  function personTransferLine(transfer, personId, settled, settledDate, total) {
+    if (settled) return `Réglé le ${formatDateFR(settledDate)}`;
+    if (!total) return '—';
+    if (!transfer) return '\u00c9quilibré';
+    if (transfer.fromId === personId) return `Vous devez ${formatCurrency(transfer.amount)}`;
+    return `On vous doit ${formatCurrency(transfer.amount)}`;
   }
 
   /* ===================== Rendu : ligne de dépense partagée ===================== */
@@ -230,6 +244,36 @@
     });
   }
 
+  function renderBalanceBlock(bucket, summary, emptyMessage) {
+    const total = bucket === 'recurring' ? summary.recurringTotal : summary.restTotal;
+    const transfer = bucket === 'recurring' ? summary.recurringTransfer : summary.restTransfer;
+    const settled = bucket === 'recurring' ? summary.recurringSettled : summary.restSettled;
+    const settledDate = bucket === 'recurring' ? summary.recurringSettledDate : summary.restSettledDate;
+
+    const balEl = document.getElementById(`balance-message-${bucket}`);
+    if (total === 0) {
+      balEl.textContent = emptyMessage;
+    } else if (!transfer) {
+      balEl.textContent = 'Vous êtes à l\u2019équilibre \u2705';
+    } else {
+      const from = personById(transfer.fromId);
+      const to = personById(transfer.toId);
+      balEl.textContent = `${from.name} doit ${formatCurrency(transfer.amount)} à ${to.name}`;
+    }
+
+    const settleBtn = document.getElementById(`settle-${bucket}-btn`);
+    const settledNote = document.getElementById(`settled-note-${bucket}`);
+    settleBtn.disabled = total === 0;
+    if (settled) {
+      settleBtn.textContent = 'Annuler le règlement';
+      settledNote.hidden = false;
+      settledNote.textContent = `Réglé le ${formatDateFR(settledDate)}`;
+    } else {
+      settleBtn.textContent = 'Marquer comme réglé';
+      settledNote.hidden = true;
+    }
+  }
+
   /* ===================== Dashboard ===================== */
   function renderDashboard() {
     ensureRecurringUpToDate();
@@ -240,7 +284,8 @@
 
     document.getElementById('dash-total').textContent = formatCurrency(summary.total);
 
-    const pctA = Math.round((summary.shares[pA.id] || 0) * 100);
+    const liveShares = Calculations.computeShares(state.people);
+    const pctA = Math.round((liveShares[pA.id] || 0) * 100);
     const pctB = 100 - pctA;
     document.getElementById('split-seg-a').style.flexBasis = pctA + '%';
     document.getElementById('split-seg-b').style.flexBasis = pctB + '%';
@@ -250,46 +295,8 @@
     const noSalaries = (Number(pA.salary) || 0) <= 0 && (Number(pB.salary) || 0) <= 0;
     document.getElementById('onboarding-hint').hidden = !noSalaries;
 
-    const balEl = document.getElementById('balance-message');
-    if (summary.total === 0) {
-      balEl.textContent = 'Aucune dépense commune ce mois-ci.';
-    } else if (!summary.transfer) {
-      balEl.textContent = 'Vous êtes à l\u2019équilibre \u2705';
-    } else {
-      const from = personById(summary.transfer.fromId);
-      const to = personById(summary.transfer.toId);
-      balEl.textContent = `${from.name} doit ${formatCurrency(summary.transfer.amount)} à ${to.name}`;
-    }
-
-    const breakdownEl = document.getElementById('balance-breakdown');
-    if (summary.reimburseTotal > 0 && (summary.communTransfer || summary.reimburseTransfer)) {
-      breakdownEl.hidden = false;
-      let rows = '';
-      if (summary.communTransfer) {
-        const from = personById(summary.communTransfer.fromId);
-        rows += `<div class="bd-row"><span>Dépenses communes</span><span>${formatCurrency(summary.communTransfer.amount)} dus par ${from.name}</span></div>`;
-      }
-      if (summary.reimburseTransfer) {
-        const from = personById(summary.reimburseTransfer.fromId);
-        rows += `<div class="bd-row"><span>À rembourser</span><span>${formatCurrency(summary.reimburseTransfer.amount)} dus par ${from.name}</span></div>`;
-      }
-      breakdownEl.innerHTML = rows;
-    } else {
-      breakdownEl.hidden = true;
-      breakdownEl.innerHTML = '';
-    }
-
-    const settleBtn = document.getElementById('settle-btn');
-    const settledNote = document.getElementById('settled-note');
-    settleBtn.disabled = summary.total === 0;
-    if (summary.settled) {
-      settleBtn.textContent = 'Annuler le règlement';
-      settledNote.hidden = false;
-      settledNote.textContent = `Réglé le ${formatDateFR(summary.settledDate)}`;
-    } else {
-      settleBtn.textContent = 'Marquer comme réglé';
-      settledNote.hidden = true;
-    }
+    renderBalanceBlock('recurring', summary, 'Aucune dépense récurrente ce mois-ci.');
+    renderBalanceBlock('rest', summary, 'Aucune dépense ponctuelle ce mois-ci.');
 
     const catEl = document.getElementById('category-breakdown');
     const cats = Calculations.categoryBreakdown(summary.expenses);
@@ -405,8 +412,10 @@
     document.getElementById('history-empty').hidden = keys.length !== 0;
     document.getElementById('history-list').innerHTML = keys.map(k => {
       const s = Calculations.computeMonthSummary(state, k);
-      const pillClass = s.settled ? 'status-settled' : 'status-pending';
-      const pillLabel = s.settled ? `Réglé le ${formatDateFR(s.settledDate)}` : (s.total > 0 ? 'En attente' : '—');
+      const bothSettled = s.recurringSettled && s.restSettled;
+      const noneSettled = !s.recurringSettled && !s.restSettled;
+      const pillClass = bothSettled ? 'status-settled' : 'status-pending';
+      const pillLabel = bothSettled ? 'Réglé' : (noneSettled ? (s.total > 0 ? 'En attente' : '—') : 'Partiellement réglé');
       return `
         <div class="history-row" data-month="${k}">
           <div class="history-info">
@@ -774,16 +783,22 @@
     });
     expenseForm.addEventListener('submit', handleExpenseSubmit);
     document.getElementById('expense-delete-btn').addEventListener('click', handleExpenseDelete);
-    document.getElementById('settle-btn').addEventListener('click', () => {
-      const existing = state.settlements[currentMonth];
-      if (existing && existing.settled) {
-        state.settlements[currentMonth] = { ...existing, settled: false, settledDate: null };
-      } else {
-        state.settlements[currentMonth] = { settled: true, settledDate: todayStr(), shares: Calculations.computeShares(state.people) };
-      }
-      persist();
-      renderAll();
-    });
+    document.getElementById('settle-recurring-btn').addEventListener('click', () => toggleSettlement('recurring'));
+    document.getElementById('settle-rest-btn').addEventListener('click', () => toggleSettlement('rest'));
+  }
+
+  // bucket = 'recurring' | 'rest' — les deux virements du couple se règlent
+  // indépendamment l'un de l'autre.
+  function toggleSettlement(bucket) {
+    const normalized = Calculations.normalizeSettlement(state.settlements[currentMonth]);
+    if (normalized[bucket].settled) {
+      normalized[bucket] = { settled: false, settledDate: null, shares: null };
+    } else {
+      normalized[bucket] = { settled: true, settledDate: todayStr(), shares: Calculations.computeShares(state.people) };
+    }
+    state.settlements[currentMonth] = normalized;
+    persist();
+    renderAll();
   }
 
   /* ===================== Service worker (PWA) ===================== */
