@@ -55,7 +55,21 @@
   }
 
   function runRecurringGeneration() {
-    Recurring.generateMissingInstances(state, todayStr());
+    return Recurring.generateMissingInstances(state, todayStr());
+  }
+
+  // Filet de sécurité : régénère les échéances récurrentes manquantes à
+  // chaque affichage du dashboard (idempotent — ne crée jamais de doublon),
+  // pour ne jamais afficher un mois auquel il manquerait une échéance déjà
+  // due, quelle que soit la façon dont l'état a été chargé (cache local,
+  // import, ou synchro Firestore).
+  function ensureRecurringUpToDate() {
+    const created = runRecurringGeneration();
+    if (created.length) {
+      Storage.save(state);
+      scheduleFirestoreWrite();
+    }
+    return created;
   }
 
   /* ===================== Navigation ===================== */
@@ -120,6 +134,8 @@
     const person = personById(myPersonId);
     const i = personIndex(myPersonId);
 
+    const summary = Calculations.computeMonthSummary(state, currentMonth);
+
     const usage = Calculations.computeLoisirsUsage(state, currentMonth).find(u => u.id === myPersonId)
       || { spent: 0, budget: 0, barPct: 0, over: false };
     const remaining = usage.budget - usage.spent;
@@ -138,6 +154,32 @@
       <div class="gauge-track"><div class="gauge-fill ${usage.over ? 'over' : ''}" style="width:${usage.barPct}%"></div></div>
       <div class="gauge-caption ${usage.over ? 'over' : ''}">${caption}</div>`;
 
+    // Jauge "Dépenses communes" : la part réelle due ce mois-ci (dépenses
+    // ponctuelles + récurrentes déjà générées, prorata et remboursements
+    // confondus) face à l'estimation mensuelle basée sur les récurrences
+    // actives (calculée dans Réglages → Budget loisirs & épargne).
+    const communActual = (summary.communDue[myPersonId] || 0) + (summary.reimburseDue[myPersonId] || 0);
+    const budgetEstimate = Calculations.computeBudgetBreakdown(state).find(b => b.id === myPersonId) || { commun: 0 };
+    const communBudget = budgetEstimate.commun || 0;
+    const communBarPct = communBudget > 0 ? Math.min(100, (communActual / communBudget) * 100) : (communActual > 0 ? 100 : 0);
+    const communOver = communActual > communBudget;
+    const communCaption = communBudget <= 0
+      ? `${formatCurrency(communActual)} de dépenses communes ce mois-ci (aucune récurrence active pour comparer)`
+      : (communOver
+        ? `${formatCurrency(communActual - communBudget)} au-delà de l\u2019estimation habituelle`
+        : `${formatCurrency(communBudget - communActual)} sous l\u2019estimation habituelle`);
+    document.getElementById('personal-commun-card').innerHTML = `
+      <div class="gauge-header">
+        <span class="avatar ${i === 1 ? 'avatar-b' : 'avatar-a'}">${initial(person.name)}</span>
+        <span class="name">${escapeHtml(person.name)} · Dépenses communes</span>
+      </div>
+      <div class="gauge-amounts">
+        <span class="spent">${formatCurrency(communActual)}</span>
+        <span class="budget">/ ${formatCurrency(communBudget)} estimés</span>
+      </div>
+      <div class="gauge-track"><div class="gauge-fill ${communOver ? 'over' : ''}" style="width:${communBarPct}%"></div></div>
+      <div class="gauge-caption ${communOver ? 'over' : ''}">${communCaption}</div>`;
+
     const persoExpenses = state.expenses
       .filter(e => e.personId === myPersonId && e.type === 'perso' && !Calculations.isForcedCommun(e) && Calculations.monthKeyOf(e.date) === currentMonth)
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
@@ -145,7 +187,6 @@
       ? persoExpenses.map(renderExpenseRowHTML).join('')
       : '<p class="card-sub">Aucune dépense personnelle ce mois-ci.</p>';
 
-    const summary = Calculations.computeMonthSummary(state, currentMonth);
     const bal = summary.balance[myPersonId] || 0;
     const owedEl = document.getElementById('personal-owed');
     if (bal >= -0.005) {
@@ -191,6 +232,7 @@
 
   /* ===================== Dashboard ===================== */
   function renderDashboard() {
+    ensureRecurringUpToDate();
     renderPersonalSection();
     document.getElementById('month-label').textContent = formatMonthLabel(currentMonth);
     const summary = Calculations.computeMonthSummary(state, currentMonth);
