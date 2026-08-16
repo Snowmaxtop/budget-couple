@@ -121,12 +121,22 @@
         </div>
       </div>
 
-      <div class="card balance-card" id="balance-card">
-        <div class="balance-message" id="balance-message">—</div>
-        <div class="balance-breakdown" id="balance-breakdown" hidden></div>
-        <div class="balance-actions">
-          <button class="btn btn-primary" id="settle-btn">Marquer comme réglé</button>
-          <div class="settled-note" id="settled-note" hidden></div>
+      <div class="card balance-card">
+        <div class="balance-block">
+          <div class="balance-block-title">Récurrentes · début de mois</div>
+          <div class="balance-message" id="balance-message-recurring">—</div>
+          <div class="balance-actions">
+            <button class="btn btn-primary" id="settle-recurring-btn">Marquer comme réglé</button>
+            <div class="settled-note" id="settled-note-recurring" hidden></div>
+          </div>
+        </div>
+        <div class="balance-block">
+          <div class="balance-block-title">Reste du mois · dépenses ponctuelles</div>
+          <div class="balance-message" id="balance-message-rest">—</div>
+          <div class="balance-actions">
+            <button class="btn btn-primary" id="settle-rest-btn">Marquer comme réglé</button>
+            <div class="settled-note" id="settled-note-rest" hidden></div>
+          </div>
         </div>
       </div>
 
