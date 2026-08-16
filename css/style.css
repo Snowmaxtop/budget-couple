@@ -355,8 +355,14 @@ h1, h2, h3, p { margin: 0; }
 .balance-breakdown .bd-row { display: flex; justify-content: space-between; }
 .balance-breakdown .bd-row span:last-child { font-weight: 700; color: var(--ink); }
 
-/* ===== Split mode (case à cocher dans la modale dépense) ===== */
+/* ===== Split mode (case à cocher + curseur dans la modale dépense) ===== */
 .split-mode-row { display: flex; flex-direction: column; gap: 10px; }
+.split-percent-row { padding: 4px 2px 0; }
+.split-percent-row input[type="range"] {
+  width: 100%; accent-color: var(--rose); height: 20px; cursor: pointer;
+}
+.split-percent-caption { font-size: .82rem; color: var(--ink-soft); margin-top: 4px; text-align: center; }
+.split-percent-caption span { font-weight: 800; color: var(--ink); font-size: .95rem; }
 
 /* ===== Personnel : jauge loisirs ===== */
 .gauge-card { background: var(--white); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 14px; box-shadow: var(--shadow-sm); }
@@ -393,6 +399,12 @@ dialog::backdrop { background: rgba(35,32,29,.35); }
   font-weight: 700; font-size: .82rem; color: var(--ink-soft); cursor: pointer;
 }
 .segmented-opt.active { background: var(--white); color: var(--ink); box-shadow: var(--shadow-sm); }
+.person-switch-opt {
+  flex: 1; border: none; background: none; padding: 9px 0; border-radius: 100px;
+  font-weight: 700; font-size: .82rem; color: var(--ink-soft); cursor: pointer;
+}
+.person-switch-opt.active { background: var(--white); color: var(--ink); box-shadow: var(--shadow-sm); }
+#person-switch { margin-bottom: 14px; }
 .static-type-label { font-weight: 700; font-size: .85rem; color: var(--ink-soft); background: var(--surface-2); border-radius: 100px; padding: 9px 0; text-align: center; }
 
 @media (min-width: 720px) {
