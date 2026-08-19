@@ -367,6 +367,9 @@ h1, h2, h3, p { margin: 0; }
 }
 .split-percent-caption { font-size: .82rem; color: var(--ink-soft); margin-top: 4px; text-align: center; }
 .split-percent-caption span { font-weight: 800; color: var(--ink); font-size: .95rem; }
+.resto-amount-row { padding-top: 2px; }
+
+.reward-message { color: var(--sage-deep); font-weight: 700; font-size: .88rem; text-align: center; margin: 4px 0 0; }
 
 /* ===== Personnel : jauge loisirs ===== */
 .gauge-card { background: var(--white); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 14px; box-shadow: var(--shadow-sm); }
