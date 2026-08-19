@@ -30,6 +30,29 @@
   </div>
 </div>
 
+<!-- ===== Choix de profil (une fois par appareil) ===== -->
+<div id="profile-gate" class="login-gate" hidden>
+  <div class="login-card">
+    <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
+      <rect width="40" height="40" rx="10" fill="var(--rose)"/>
+      <circle cx="16.5" cy="20" r="7.2" fill="#fff" fill-opacity="0.92"/>
+      <circle cx="23.5" cy="20" r="7.2" fill="#fff" fill-opacity="0.62"/>
+    </svg>
+    <h1>Qui utilise cet appareil ?</h1>
+    <p class="card-sub">Tout l'app (Accueil, Dépenses, Récurrentes, Réglages) s'affichera selon votre choix. Modifiable à tout moment dans Réglages.</p>
+    <div class="profile-gate-options">
+      <button type="button" class="profile-gate-opt" data-person-index="0">
+        <span class="avatar avatar-a">—</span>
+        <span class="profile-gate-name">—</span>
+      </button>
+      <button type="button" class="profile-gate-opt" data-person-index="1">
+        <span class="avatar avatar-b">—</span>
+        <span class="profile-gate-name">—</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 <div id="app" hidden>
 
   <!-- ===== En-tête ===== -->
@@ -87,16 +110,11 @@
         </button>
       </div>
 
-      <div class="segmented" id="person-switch">
-        <button type="button" class="person-switch-opt" data-person-index="0">—</button>
-        <button type="button" class="person-switch-opt" data-person-index="1">—</button>
-      </div>
-
       <div id="onboarding-hint" class="hint-card" hidden>
         Ajoutez vos deux salaires dans <button class="link-btn" data-goto="settings">Réglages</button> pour que la répartition se calcule automatiquement.
       </div>
 
-      <h2 class="section-heading">Dépenses perso</h2>
+      <h2 class="section-heading">Personnel</h2>
 
       <div class="gauge-card" id="personal-loisirs-card"></div>
 
@@ -107,11 +125,13 @@
         <div id="personal-expenses-list" class="expense-list"></div>
       </div>
 
-      <h2 class="section-heading">Dépenses communes</h2>
+      <div class="section-divider"></div>
+
+      <h2 class="section-heading">Commun</h2>
 
       <div class="card">
-        <div class="balance-block-title">Récurrentes · au prorata, à verser en début de mois</div>
-        <div id="recurring-itemized" class="itemized-list"></div>
+        <div class="balance-block-title">Doit donner en début de mois</div>
+        <div class="commun-amount" id="commun-recurring-amount">0,00&nbsp;€</div>
         <div class="balance-message" id="balance-message-recurring">—</div>
         <div class="balance-actions">
           <button class="btn btn-primary" id="settle-recurring-btn">Marquer comme réglé</button>
@@ -120,37 +140,13 @@
       </div>
 
       <div class="card">
-        <div class="balance-block-title">À verser en fin de mois</div>
+        <div class="balance-block-title">Doit donner en fin de mois</div>
+        <div class="commun-amount" id="commun-rest-amount">0,00&nbsp;€</div>
         <div class="balance-message" id="balance-message-rest">—</div>
-        <div id="rest-itemized" class="itemized-list"></div>
         <div class="balance-actions">
           <button class="btn btn-primary" id="settle-rest-btn">Marquer comme réglé</button>
           <div class="settled-note" id="settled-note-rest" hidden></div>
         </div>
-      </div>
-
-      <div class="card hero-card">
-        <div class="hero-label">Dépenses communes (total du mois)</div>
-        <div class="hero-amount" id="dash-total">0,00&nbsp;€</div>
-        <div class="split-ribbon" id="split-ribbon">
-          <div class="split-seg split-a" id="split-seg-a"><span id="split-a-label"></span></div>
-          <div class="split-seg split-b" id="split-seg-b"><span id="split-b-label"></span></div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="section-title-row">
-          <h2 class="section-title">Par catégorie</h2>
-        </div>
-        <div id="category-breakdown" class="category-breakdown"></div>
-      </div>
-
-      <div class="card">
-        <div class="section-title-row">
-          <h2 class="section-title">Dépenses récentes</h2>
-          <button class="link-btn" data-goto="expenses">Tout voir</button>
-        </div>
-        <div id="recent-expenses" class="expense-list"></div>
       </div>
     </section>
 
@@ -174,6 +170,9 @@
 
     <!-- ---------- Récurrentes ---------- -->
     <section class="view" id="view-recurring">
+      <div class="filters-row">
+        <select id="filter-recurring-person" class="select-chip"></select>
+      </div>
       <div id="recurring-list" class="recurring-list"></div>
       <div id="recurring-empty" class="empty-state" hidden>
         <p>Aucune dépense récurrente.</p>
@@ -192,6 +191,12 @@
 
     <!-- ---------- Réglages ---------- -->
     <section class="view" id="view-settings">
+
+      <div class="card">
+        <h2 class="section-title">Profil</h2>
+        <p class="card-sub">Cet appareil est configuré pour <strong id="current-profile-name">—</strong>. L'Accueil, les Dépenses et les Récurrentes s'affichent selon ce choix.</p>
+        <button class="btn btn-secondary" id="switch-profile-btn">Changer de profil</button>
+      </div>
 
       <div class="card">
         <h2 class="section-title">Vos salaires</h2>
@@ -350,6 +355,23 @@
       <button type="submit" class="btn btn-primary">Enregistrer</button>
     </div>
   </form>
+</dialog>
+
+<!-- ===== Modale : récompense loisirs de fin de mois ===== -->
+<dialog id="reward-modal">
+  <div class="stacked-form modal-form">
+    <div class="modal-header">
+      <h2>🎉 Bravo !</h2>
+      <button type="button" class="icon-btn" id="reward-modal-close" aria-label="Fermer">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <p class="card-sub" id="reward-text">—</p>
+    <div class="modal-actions" style="justify-content: stretch; gap: 10px;">
+      <button type="button" class="btn btn-secondary" id="reward-save-btn" style="flex:1;">Garder en épargne</button>
+      <button type="button" class="btn btn-primary" id="reward-spend-btn" style="flex:1;">Ajouter à mes loisirs</button>
+    </div>
+  </div>
 </dialog>
 
 <script src="js/storage.js"></script>
