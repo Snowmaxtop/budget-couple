@@ -371,6 +371,19 @@ h1, h2, h3, p { margin: 0; }
 .gauge-caption { margin-top: 8px; font-size: .8rem; color: var(--ink-soft); }
 .gauge-caption.over { color: var(--danger); font-weight: 700; }
 
+.section-heading { font-size: .78rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-faint); margin: 22px 4px 10px; }
+.section-heading:first-of-type { margin-top: 4px; }
+
+.itemized-list { display: flex; flex-direction: column; margin-bottom: 12px; }
+.itemized-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.itemized-row:last-child { border-bottom: none; }
+.itemized-main { flex: 1; min-width: 0; }
+.itemized-label { font-size: .85rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.itemized-tag { font-size: .7rem; color: var(--ink-soft); margin-top: 1px; }
+.itemized-amount { text-align: right; white-space: nowrap; }
+.itemized-total { font-size: .9rem; font-weight: 800; }
+.itemized-share { font-size: .72rem; color: var(--ink-soft); margin-top: 1px; }
+
 /* ===== Modal ===== */
 dialog {
   border: none; border-radius: var(--radius-lg) var(--radius-lg) 0 0;
