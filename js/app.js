@@ -155,25 +155,74 @@
       ? persoExpenses.map(renderExpenseRowHTML).join('')
       : '<p class="card-sub">Aucune dépense personnelle ce mois-ci.</p>';
 
+    renderSavingsCard();
+
     /* ---- Partie 2 : dépenses communes ---- */
     renderBalanceBlock('recurring', summary, myPersonId, 'Aucune dépense récurrente commune ce mois-ci.');
     renderBalanceBlock('rest', summary, myPersonId, 'Aucune dépense ponctuelle commune ce mois-ci.');
   }
 
+  // Rappel mensuel : la personne active a-t-elle bien viré son épargne ce
+  // mois-ci ? Un simple bouton à cocher, par personne et par mois — pas de
+  // montant réel suivi, juste l'objectif estimé (Réglages → Budget loisirs
+  // & épargne) comme repère.
+  function renderSavingsCard() {
+    const breakdown = Calculations.computeBudgetBreakdown(state).find(b => b.id === myPersonId);
+    const estimate = breakdown ? breakdown.savings : 0;
+    const log = (state.savingsLog[currentMonth] && state.savingsLog[currentMonth][myPersonId]) || null;
+
+    document.getElementById('savings-message').textContent = `Objectif estimé ce mois-ci : ${formatCurrency(estimate)}`;
+
+    const btn = document.getElementById('savings-validate-btn');
+    const note = document.getElementById('savings-note');
+    const reward = document.getElementById('savings-reward');
+    if (log && log.done) {
+      btn.textContent = 'Annuler';
+      note.hidden = false;
+      note.textContent = `Épargné le ${formatDateFR(log.date)}`;
+      reward.hidden = false;
+    } else {
+      btn.textContent = 'J\u2019ai épargné ce mois-ci';
+      note.hidden = true;
+      reward.hidden = true;
+    }
+  }
+
+  function toggleSavingsLog() {
+    if (!myPersonId) return;
+    if (!state.savingsLog[currentMonth]) state.savingsLog[currentMonth] = {};
+    const existing = state.savingsLog[currentMonth][myPersonId];
+    state.savingsLog[currentMonth][myPersonId] = (existing && existing.done)
+      ? { done: false, date: null }
+      : { done: true, date: todayStr() };
+    persist();
+    renderSavingsCard();
+  }
+
   /* ===================== Rendu : ligne de dépense partagée ===================== */
+  const CATEGORY_EMOJIS = {
+    'logement': '🏠', 'alimentation': '🛒', 'transport': '🚗', 'loisirs': '🎉',
+    'santé': '💊', 'abonnements': '📱', 'assurances': '🛡️', 'autre': '🗂️'
+  };
+  function categoryEmoji(category) {
+    return CATEGORY_EMOJIS[(category || '').trim().toLowerCase()] || '🗂️';
+  }
+
   function renderExpenseRowHTML(e) {
     const p = personById(e.personId);
     const forcedFood = Calculations.isForcedCommun(e);
     const typeBadge = (e.type === 'commun' || forcedFood) ? '<span class="badge badge-commun">Commune</span>' : '<span class="badge badge-perso">Perso</span>';
     const split = Calculations.effectiveSplit(e);
     const splitBadge = (!forcedFood && split.mode === 'fixed') ? `<span class="badge badge-split">${split.percent}% remb.</span>` : '';
-    const recurTag = e.recurringId ? ' · récurrente' : '';
+    const freqBadge = e.recurringId ? '<span class="badge badge-split">Récurrente</span>' : '<span class="badge badge-perso">Ponctuelle</span>';
+    const restoAmount = Number(e.restoAmount) || 0;
+    const restoNote = restoAmount > 0 ? ` · dont ${formatCurrency(restoAmount)} carte resto` : '';
     return `
       <div class="expense-row" data-id="${e.id}">
         <span class="avatar ${avatarClass(e.personId)}">${initial(p.name)}</span>
         <div class="expense-main">
           <div class="expense-label">${escapeHtml(e.label)}</div>
-          <div class="expense-meta">${typeBadge}${splitBadge}<span>${escapeHtml(e.category || 'Autre')}${recurTag}</span></div>
+          <div class="expense-meta">${typeBadge}${splitBadge}${freqBadge}<span>${categoryEmoji(e.category)} ${escapeHtml(e.category || 'Autre')}${restoNote}</span></div>
         </div>
         <div class="expense-amount">${formatCurrency(e.amount)}</div>
       </div>`;
@@ -553,6 +602,18 @@
     return parseInt(expenseForm.splitPercent.value, 10) || 0;
   }
 
+  function setRestoUI(restoAmount) {
+    const has = Number(restoAmount) > 0;
+    expenseForm.hasResto.checked = has;
+    expenseForm.restoAmount.value = has ? restoAmount : '';
+    document.getElementById('resto-amount-row').hidden = !has;
+  }
+
+  function readRestoAmount() {
+    if (!expenseForm.hasResto.checked) return 0;
+    return parseFloat(expenseForm.restoAmount.value) || 0;
+  }
+
   function openAddExpenseModal() {
     editingExpenseId = null;
     editingRecurringId = null;
@@ -570,6 +631,7 @@
     expenseForm.type.value = 'commun';
     expenseForm.startDate.value = todayStr();
     setSplitModeUI({ mode: 'prorata' });
+    setRestoUI(0);
     updateSplitModeVisibility();
     expenseModal.showModal();
   }
@@ -588,6 +650,7 @@
     expenseForm.date.value = exp.date;
     expenseForm.date.disabled = !!exp.recurringId;
     setSplitModeUI(Calculations.effectiveSplit(exp));
+    setRestoUI(exp.restoAmount || 0);
     updateSplitModeVisibility();
 
     document.getElementById('expense-modal-title').textContent = 'Modifier la dépense';
@@ -615,6 +678,7 @@
     expenseForm.startDate.value = rule.startDate;
     expenseForm.endDate.value = rule.endDate || '';
     setSplitModeUI(Calculations.effectiveSplit(rule));
+    setRestoUI(0);
     updateSplitModeVisibility();
 
     document.getElementById('expense-modal-title').textContent = 'Modifier la récurrence';
@@ -642,6 +706,7 @@
       splitMode = 'fixed';
       splitPercent = readSplitPercent();
     }
+    const restoAmount = (type === 'commun') ? Math.min(readRestoAmount(), amount > 0 ? amount : 0) : 0;
     if (!label || !(amount > 0)) return;
 
     if (editingRecurringId) {
@@ -665,11 +730,11 @@
       runRecurringGeneration();
     } else if (editingExpenseId) {
       const exp = state.expenses.find(x => x.id === editingExpenseId);
-      Object.assign(exp, { label, amount, type, personId, category, splitMode, splitPercent });
+      Object.assign(exp, { label, amount, type, personId, category, splitMode, splitPercent, restoAmount });
       if (!exp.recurringId) exp.date = expenseForm.date.value || exp.date;
     } else {
       state.expenses.push({
-        id: Recurring.genId(), label, amount, type, personId, category, splitMode, splitPercent,
+        id: Recurring.genId(), label, amount, type, personId, category, splitMode, splitPercent, restoAmount,
         date: expenseForm.date.value || todayStr(),
         recurringId: null, createdAt: new Date().toISOString()
       });
@@ -756,10 +821,14 @@
     expenseForm.splitPercent.addEventListener('input', () => {
       document.getElementById('split-percent-label').textContent = expenseForm.splitPercent.value + '%';
     });
+    expenseForm.hasResto.addEventListener('change', () => {
+      document.getElementById('resto-amount-row').hidden = !expenseForm.hasResto.checked;
+    });
     expenseForm.addEventListener('submit', handleExpenseSubmit);
     document.getElementById('expense-delete-btn').addEventListener('click', handleExpenseDelete);
     document.getElementById('settle-recurring-btn').addEventListener('click', () => toggleSettlement('recurring'));
     document.getElementById('settle-rest-btn').addEventListener('click', () => toggleSettlement('rest'));
+    document.getElementById('savings-validate-btn').addEventListener('click', toggleSavingsLog);
   }
 
   // bucket = 'recurring' | 'rest' — les deux virements du couple se règlent

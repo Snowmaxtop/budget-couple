@@ -41,6 +41,15 @@ const Calculations = (() => {
     return { mode: 'prorata' };
   }
 
+  // Montant réellement à partager d'une dépense : le montant total moins ce
+  // qui a déjà été payé avec la carte resto (un avantage employeur, pas de
+  // l'argent personnel à se faire rembourser). N'est jamais négatif.
+  function effectiveAmount(e) {
+    const amt = Number(e.amount) || 0;
+    const resto = Number(e.restoAmount) || 0;
+    return Math.max(0, amt - resto);
+  }
+
   // Normalise l'objet de règlement d'un mois vers le nouveau format à deux
   // volets { recurring, rest }, chacun avec son propre settled/settledDate/
   // shares. Reste compatible avec l'ancien format à plat { settled,
@@ -67,6 +76,9 @@ const Calculations = (() => {
   // indépendamment (avec ses propres % de répartition figés si besoin).
   // Le detail prorata/pourcentage fixe (effectiveSplit) reste utilisé pour
   // calculer correctement la part de chacun À L'INTÉRIEUR de chaque groupe.
+  // Toutes les sommes utilisées pour le partage se basent sur
+  // effectiveAmount (montant moins carte resto éventuelle) ; le montant brut
+  // (amount) reste disponible sur chaque item pour l'affichage.
   function computeMonthSummary(state, monthKey) {
     const people = state.people;
     const settlement = normalizeSettlement(state.settlements[monthKey]);
@@ -78,10 +90,10 @@ const Calculations = (() => {
       .filter(e => (e.type === 'commun' || isForcedCommun(e)) && monthKeyOf(e.date) === monthKey)
       .sort((a, b) => (a.date < b.date ? 1 : -1));
 
-    const total = monthExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const total = monthExpenses.reduce((s, e) => s + effectiveAmount(e), 0);
 
     function dueContribution(e, due, shares) {
-      const amount = Number(e.amount) || 0;
+      const amount = effectiveAmount(e);
       const split = effectiveSplit(e);
       if (split.mode === 'fixed') {
         const pct = split.percent / 100;
@@ -98,18 +110,19 @@ const Calculations = (() => {
       people.forEach(p => { paid[p.id] = 0; due[p.id] = 0; });
       const items = [];
       list.forEach(e => {
-        paid[e.personId] = (paid[e.personId] || 0) + (Number(e.amount) || 0);
+        const amt = effectiveAmount(e);
+        paid[e.personId] = (paid[e.personId] || 0) + amt;
         const itemDue = {};
         people.forEach(p => { itemDue[p.id] = 0; });
         dueContribution(e, itemDue, shares);
         people.forEach(p => { due[p.id] += itemDue[p.id]; });
         items.push({
           id: e.id, label: e.label, category: e.category, date: e.date,
-          amount: Number(e.amount) || 0, personId: e.personId,
-          split: effectiveSplit(e), due: itemDue
+          amount: Number(e.amount) || 0, restoAmount: Number(e.restoAmount) || 0, effectiveAmount: amt,
+          personId: e.personId, split: effectiveSplit(e), due: itemDue
         });
       });
-      const bTotal = list.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      const bTotal = list.reduce((s, e) => s + effectiveAmount(e), 0);
       const balance = {};
       people.forEach(p => { balance[p.id] = paid[p.id] - due[p.id]; });
       return { total: bTotal, paid, due, balance, items };
@@ -225,6 +238,6 @@ const Calculations = (() => {
   return {
     computeShares, computeMonthSummary, monthKeyOf, categoryBreakdown,
     allMonthKeysWithActivity, totalMonthlyRecurringCommun, computeBudgetBreakdown,
-    computeLoisirsUsage, isForcedCommun, effectiveSplit, normalizeSettlement
+    computeLoisirsUsage, isForcedCommun, effectiveSplit, normalizeSettlement, effectiveAmount
   };
 })();
