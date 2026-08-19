@@ -125,6 +125,16 @@
         <div id="personal-expenses-list" class="expense-list"></div>
       </div>
 
+      <div class="card" id="savings-card">
+        <div class="balance-block-title">Épargne</div>
+        <div class="balance-message" id="savings-message">—</div>
+        <div class="balance-actions">
+          <button class="btn btn-primary" id="savings-validate-btn">J'ai épargné ce mois-ci</button>
+          <div class="settled-note" id="savings-note" hidden></div>
+          <p class="reward-message" id="savings-reward" hidden>🎉 Félicitations, ton toi du futur te remercie !</p>
+        </div>
+      </div>
+
       <div class="section-divider"></div>
 
       <h2 class="section-heading">Commun</h2>
@@ -327,6 +337,17 @@
       <div class="split-percent-row" id="split-percent-row" hidden>
         <input type="range" name="splitPercent" id="split-percent" min="0" max="100" step="10" value="50">
         <div class="split-percent-caption"><span id="split-percent-label">50%</span> remboursés par l'autre</div>
+      </div>
+
+      <label class="checkbox-row">
+        <input type="checkbox" name="hasResto" id="has-resto-toggle">
+        <span>Déjà payé en partie avec la carte resto</span>
+      </label>
+      <div class="resto-amount-row" id="resto-amount-row" hidden>
+        <label class="field-label">Montant payé avec la carte resto
+          <input type="number" name="restoAmount" class="input" placeholder="0,00" min="0" step="0.01" inputmode="decimal">
+        </label>
+        <p class="fine-print">Ce montant sera déduit avant de calculer ce qu'il y a à partager — il ne sort pas de votre poche.</p>
       </div>
     </div>
 
