@@ -131,7 +131,7 @@
     });
   }
 
-  /* ===================== Personnel (haut de l'Accueil) ===================== */
+  /* ===================== Personnel (haut de l'Accueil, en 2 parties) ===================== */
   function renderPersonalSection() {
     if (!myPersonId || !state.people.some(p => p.id === myPersonId)) {
       myPersonId = state.people[0] ? state.people[0].id : null;
@@ -145,13 +145,13 @@
 
     const person = personById(myPersonId);
     const i = personIndex(myPersonId);
-
     const summary = Calculations.computeMonthSummary(state, currentMonth);
 
+    /* ---- Partie 1 : dépenses perso ---- */
     const usage = Calculations.computeLoisirsUsage(state, currentMonth).find(u => u.id === myPersonId)
       || { spent: 0, budget: 0, barPct: 0, over: false };
     const remaining = usage.budget - usage.spent;
-    const caption = usage.budget <= 0
+    const loisirsCaption = usage.budget <= 0
       ? 'Aucun budget loisirs défini pour l\u2019instant (Réglages)'
       : (usage.over ? `Dépassement de ${formatCurrency(usage.spent - usage.budget)}` : `${formatCurrency(remaining)} restants`);
     document.getElementById('personal-loisirs-card').innerHTML = `
@@ -164,33 +164,7 @@
         <span class="budget">/ ${formatCurrency(usage.budget)}</span>
       </div>
       <div class="gauge-track"><div class="gauge-fill ${usage.over ? 'over' : ''}" style="width:${usage.barPct}%"></div></div>
-      <div class="gauge-caption ${usage.over ? 'over' : ''}">${caption}</div>`;
-
-    // Jauge "Dépenses communes" : la part réelle due ce mois-ci (dépenses
-    // ponctuelles + récurrentes déjà générées, prorata et remboursements
-    // confondus) face à l'estimation mensuelle basée sur les récurrences
-    // actives (calculée dans Réglages → Budget loisirs & épargne).
-    const communActual = summary.due[myPersonId] || 0;
-    const budgetEstimate = Calculations.computeBudgetBreakdown(state).find(b => b.id === myPersonId) || { commun: 0 };
-    const communBudget = budgetEstimate.commun || 0;
-    const communBarPct = communBudget > 0 ? Math.min(100, (communActual / communBudget) * 100) : (communActual > 0 ? 100 : 0);
-    const communOver = communActual > communBudget;
-    const communCaption = communBudget <= 0
-      ? `${formatCurrency(communActual)} de dépenses communes ce mois-ci (aucune récurrence active pour comparer)`
-      : (communOver
-        ? `${formatCurrency(communActual - communBudget)} au-delà de l\u2019estimation habituelle`
-        : `${formatCurrency(communBudget - communActual)} sous l\u2019estimation habituelle`);
-    document.getElementById('personal-commun-card').innerHTML = `
-      <div class="gauge-header">
-        <span class="avatar ${i === 1 ? 'avatar-b' : 'avatar-a'}">${initial(person.name)}</span>
-        <span class="name">${escapeHtml(person.name)} · Dépenses communes</span>
-      </div>
-      <div class="gauge-amounts">
-        <span class="spent">${formatCurrency(communActual)}</span>
-        <span class="budget">/ ${formatCurrency(communBudget)} estimés</span>
-      </div>
-      <div class="gauge-track"><div class="gauge-fill ${communOver ? 'over' : ''}" style="width:${communBarPct}%"></div></div>
-      <div class="gauge-caption ${communOver ? 'over' : ''}">${communCaption}</div>`;
+      <div class="gauge-caption ${usage.over ? 'over' : ''}">${loisirsCaption}</div>`;
 
     const persoExpenses = state.expenses
       .filter(e => e.personId === myPersonId && e.type === 'perso' && !Calculations.isForcedCommun(e) && Calculations.monthKeyOf(e.date) === currentMonth)
@@ -199,23 +173,46 @@
       ? persoExpenses.map(renderExpenseRowHTML).join('')
       : '<p class="card-sub">Aucune dépense personnelle ce mois-ci.</p>';
 
-    const owedEl = document.getElementById('personal-owed');
-    const recurringLine = personTransferLine(summary.recurringTransfer, myPersonId, summary.recurringSettled, summary.recurringSettledDate, summary.recurringTotal);
-    const restLine = personTransferLine(summary.restTransfer, myPersonId, summary.restSettled, summary.restSettledDate, summary.restTotal);
-    owedEl.innerHTML = `
-      <div class="budget-line"><span>Récurrentes (début de mois)</span><span>${recurringLine}</span></div>
-      <div class="budget-line"><span>Reste du mois (ponctuelles)</span><span>${restLine}</span></div>`;
+    /* ---- Partie 2 : dépenses communes ---- */
+    renderItemizedList('recurring-itemized', summary.recurringItems, myPersonId,
+      'Aucune dépense récurrente commune ce mois-ci.');
+    renderBalanceBlock('recurring', summary, 'Aucune dépense récurrente commune ce mois-ci.');
+
+    renderItemizedList('rest-itemized', summary.restItems, myPersonId,
+      'Aucune dépense ponctuelle commune ce mois-ci.');
+    renderBalanceBlock('rest', summary, 'Aucune dépense ponctuelle commune ce mois-ci.');
   }
 
-  // Texte affiché pour la part d'UNE personne dans UN volet (récurrentes ou
-  // reste) : ce qu'elle doit verser, ce qu'on lui doit, ou la date à
-  // laquelle ce volet a déjà été réglé.
-  function personTransferLine(transfer, personId, settled, settledDate, total) {
-    if (settled) return `Réglé le ${formatDateFR(settledDate)}`;
-    if (!total) return '—';
-    if (!transfer) return '\u00c9quilibré';
-    if (transfer.fromId === personId) return `Vous devez ${formatCurrency(transfer.amount)}`;
-    return `On vous doit ${formatCurrency(transfer.amount)}`;
+  // Liste détaillée d'un volet (récurrentes ou reste) : chaque dépense avec
+  // son montant total, son mode de répartition, et la part due par LA
+  // PERSONNE AFFICHÉE — pour qu'on voie exactement d'où vient le total à
+  // verser (prorata, remboursement partiel ou intégral).
+  function renderItemizedList(containerId, items, personId, emptyMessage) {
+    const el = document.getElementById(containerId);
+    if (!items || !items.length) {
+      el.innerHTML = `<p class="card-sub">${emptyMessage}</p>`;
+      return;
+    }
+    el.innerHTML = items.map(item => {
+      let tag;
+      if (item.split.mode === 'fixed') {
+        tag = item.split.percent === 100 ? 'Remboursement total' : `Remboursement particulier · ${item.split.percent}%`;
+      } else {
+        tag = 'Prorata';
+      }
+      const payer = personById(item.personId);
+      return `
+        <div class="itemized-row">
+          <div class="itemized-main">
+            <div class="itemized-label">${escapeHtml(item.label)}</div>
+            <div class="itemized-tag">${tag} · payé par ${escapeHtml(payer.name)}</div>
+          </div>
+          <div class="itemized-amount">
+            <div class="itemized-total">${formatCurrency(item.amount)}</div>
+            <div class="itemized-share">part : ${formatCurrency(item.due[personId] || 0)}</div>
+          </div>
+        </div>`;
+    }).join('');
   }
 
   /* ===================== Rendu : ligne de dépense partagée ===================== */
@@ -294,9 +291,6 @@
 
     const noSalaries = (Number(pA.salary) || 0) <= 0 && (Number(pB.salary) || 0) <= 0;
     document.getElementById('onboarding-hint').hidden = !noSalaries;
-
-    renderBalanceBlock('recurring', summary, 'Aucune dépense récurrente ce mois-ci.');
-    renderBalanceBlock('rest', summary, 'Aucune dépense ponctuelle ce mois-ci.');
 
     const catEl = document.getElementById('category-breakdown');
     const cats = Calculations.categoryBreakdown(summary.expenses);

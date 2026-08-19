@@ -96,14 +96,23 @@ const Calculations = (() => {
     function computeBucket(list, shares) {
       const paid = {}, due = {};
       people.forEach(p => { paid[p.id] = 0; due[p.id] = 0; });
+      const items = [];
       list.forEach(e => {
         paid[e.personId] = (paid[e.personId] || 0) + (Number(e.amount) || 0);
-        dueContribution(e, due, shares);
+        const itemDue = {};
+        people.forEach(p => { itemDue[p.id] = 0; });
+        dueContribution(e, itemDue, shares);
+        people.forEach(p => { due[p.id] += itemDue[p.id]; });
+        items.push({
+          id: e.id, label: e.label, category: e.category, date: e.date,
+          amount: Number(e.amount) || 0, personId: e.personId,
+          split: effectiveSplit(e), due: itemDue
+        });
       });
       const bTotal = list.reduce((s, e) => s + (Number(e.amount) || 0), 0);
       const balance = {};
       people.forEach(p => { balance[p.id] = paid[p.id] - due[p.id]; });
-      return { total: bTotal, paid, due, balance };
+      return { total: bTotal, paid, due, balance, items };
     }
 
     function bucketTransfer(balance) {
@@ -135,9 +144,9 @@ const Calculations = (() => {
 
     return {
       monthKey, total, paidBy, due, balance, transfer,
-      recurringTotal: recurringBucket.total, recurringTransfer, recurringDue: recurringBucket.due,
+      recurringTotal: recurringBucket.total, recurringTransfer, recurringDue: recurringBucket.due, recurringItems: recurringBucket.items,
       recurringSettled: settlement.recurring.settled, recurringSettledDate: settlement.recurring.settledDate,
-      restTotal: restBucket.total, restTransfer, restDue: restBucket.due,
+      restTotal: restBucket.total, restTransfer, restDue: restBucket.due, restItems: restBucket.items,
       restSettled: settlement.rest.settled, restSettledDate: settlement.rest.settledDate,
       expenses: monthExpenses
     };
