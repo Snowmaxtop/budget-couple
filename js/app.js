@@ -11,7 +11,7 @@
   let pushTimer = null;
   let settingsBuilt = false;
   let myPersonId = null;
-  const filters = { type: 'all', personId: 'all', month: currentMonth };
+  const filters = { type: 'all', personId: 'all', month: currentMonth, recurringPersonId: 'all' };
 
   const expenseModal = document.getElementById('expense-modal');
   const expenseForm = document.getElementById('expense-form');
@@ -119,29 +119,11 @@
     document.getElementById('next-month').addEventListener('click', () => { currentMonth = shiftMonth(currentMonth, 1); renderDashboard(); });
   }
 
-  function bindPersonSwitch() {
-    document.querySelectorAll('.person-switch-opt').forEach((btn, i) => {
-      btn.addEventListener('click', () => {
-        const p = state.people[i];
-        if (!p) return;
-        myPersonId = p.id;
-        try { localStorage.setItem('myPersonId', p.id); } catch (e) { /* ignore */ }
-        renderDashboard();
-      });
-    });
-  }
-
   /* ===================== Personnel (haut de l'Accueil, en 2 parties) ===================== */
   function renderPersonalSection() {
     if (!myPersonId || !state.people.some(p => p.id === myPersonId)) {
       myPersonId = state.people[0] ? state.people[0].id : null;
     }
-    document.querySelectorAll('.person-switch-opt').forEach((btn, i) => {
-      const p = state.people[i];
-      if (!p) return;
-      btn.textContent = p.name;
-      btn.classList.toggle('active', p.id === myPersonId);
-    });
 
     const person = personById(myPersonId);
     const i = personIndex(myPersonId);
@@ -174,45 +156,8 @@
       : '<p class="card-sub">Aucune dépense personnelle ce mois-ci.</p>';
 
     /* ---- Partie 2 : dépenses communes ---- */
-    renderItemizedList('recurring-itemized', summary.recurringItems, myPersonId,
-      'Aucune dépense récurrente commune ce mois-ci.');
-    renderBalanceBlock('recurring', summary, 'Aucune dépense récurrente commune ce mois-ci.');
-
-    renderItemizedList('rest-itemized', summary.restItems, myPersonId,
-      'Aucune dépense ponctuelle commune ce mois-ci.');
-    renderBalanceBlock('rest', summary, 'Aucune dépense ponctuelle commune ce mois-ci.');
-  }
-
-  // Liste détaillée d'un volet (récurrentes ou reste) : chaque dépense avec
-  // son montant total, son mode de répartition, et la part due par LA
-  // PERSONNE AFFICHÉE — pour qu'on voie exactement d'où vient le total à
-  // verser (prorata, remboursement partiel ou intégral).
-  function renderItemizedList(containerId, items, personId, emptyMessage) {
-    const el = document.getElementById(containerId);
-    if (!items || !items.length) {
-      el.innerHTML = `<p class="card-sub">${emptyMessage}</p>`;
-      return;
-    }
-    el.innerHTML = items.map(item => {
-      let tag;
-      if (item.split.mode === 'fixed') {
-        tag = item.split.percent === 100 ? 'Remboursement total' : `Remboursement particulier · ${item.split.percent}%`;
-      } else {
-        tag = 'Prorata';
-      }
-      const payer = personById(item.personId);
-      return `
-        <div class="itemized-row">
-          <div class="itemized-main">
-            <div class="itemized-label">${escapeHtml(item.label)}</div>
-            <div class="itemized-tag">${tag} · payé par ${escapeHtml(payer.name)}</div>
-          </div>
-          <div class="itemized-amount">
-            <div class="itemized-total">${formatCurrency(item.amount)}</div>
-            <div class="itemized-share">part : ${formatCurrency(item.due[personId] || 0)}</div>
-          </div>
-        </div>`;
-    }).join('');
+    renderBalanceBlock('recurring', summary, myPersonId, 'Aucune dépense récurrente commune ce mois-ci.');
+    renderBalanceBlock('rest', summary, myPersonId, 'Aucune dépense ponctuelle commune ce mois-ci.');
   }
 
   /* ===================== Rendu : ligne de dépense partagée ===================== */
@@ -241,21 +186,26 @@
     });
   }
 
-  function renderBalanceBlock(bucket, summary, emptyMessage) {
+  function renderBalanceBlock(bucket, summary, personId, emptyMessage) {
     const total = bucket === 'recurring' ? summary.recurringTotal : summary.restTotal;
     const transfer = bucket === 'recurring' ? summary.recurringTransfer : summary.restTransfer;
     const settled = bucket === 'recurring' ? summary.recurringSettled : summary.restSettled;
     const settledDate = bucket === 'recurring' ? summary.recurringSettledDate : summary.restSettledDate;
+
+    const oweAmount = (transfer && transfer.fromId === personId) ? transfer.amount : 0;
+    document.getElementById(`commun-${bucket}-amount`).textContent = formatCurrency(oweAmount);
 
     const balEl = document.getElementById(`balance-message-${bucket}`);
     if (total === 0) {
       balEl.textContent = emptyMessage;
     } else if (!transfer) {
       balEl.textContent = 'Vous êtes à l\u2019équilibre \u2705';
+    } else if (transfer.fromId === personId) {
+      const to = personById(transfer.toId);
+      balEl.textContent = `À verser à ${to.name}`;
     } else {
       const from = personById(transfer.fromId);
-      const to = personById(transfer.toId);
-      balEl.textContent = `${from.name} doit ${formatCurrency(transfer.amount)} à ${to.name}`;
+      balEl.textContent = `${from.name} vous doit ${formatCurrency(transfer.amount)}`;
     }
 
     const settleBtn = document.getElementById(`settle-${bucket}-btn`);
@@ -276,43 +226,10 @@
     ensureRecurringUpToDate();
     renderPersonalSection();
     document.getElementById('month-label').textContent = formatMonthLabel(currentMonth);
-    const summary = Calculations.computeMonthSummary(state, currentMonth);
+
     const [pA, pB] = state.people;
-
-    document.getElementById('dash-total').textContent = formatCurrency(summary.total);
-
-    const liveShares = Calculations.computeShares(state.people);
-    const pctA = Math.round((liveShares[pA.id] || 0) * 100);
-    const pctB = 100 - pctA;
-    document.getElementById('split-seg-a').style.flexBasis = pctA + '%';
-    document.getElementById('split-seg-b').style.flexBasis = pctB + '%';
-    document.getElementById('split-a-label').textContent = `${initial(pA.name)} ${pctA}%`;
-    document.getElementById('split-b-label').textContent = `${initial(pB.name)} ${pctB}%`;
-
     const noSalaries = (Number(pA.salary) || 0) <= 0 && (Number(pB.salary) || 0) <= 0;
     document.getElementById('onboarding-hint').hidden = !noSalaries;
-
-    const catEl = document.getElementById('category-breakdown');
-    const cats = Calculations.categoryBreakdown(summary.expenses);
-    if (!cats.length) {
-      catEl.innerHTML = '<p class="card-sub">Rien à afficher pour l\u2019instant.</p>';
-    } else {
-      const max = cats[0][1];
-      catEl.innerHTML = cats.map(([name, amount]) => `
-        <div class="cat-row">
-          <span class="cat-name">${escapeHtml(name)}</span>
-          <span class="cat-bar-track"><span class="cat-bar-fill" style="width:${Math.max(6, (amount / max) * 100)}%"></span></span>
-          <span class="cat-amount">${formatCurrency(amount)}</span>
-        </div>`).join('');
-    }
-
-    const monthAll = state.expenses
-      .filter(e => Calculations.monthKeyOf(e.date) === currentMonth)
-      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (a.createdAt || '') < (b.createdAt || '') ? 1 : -1))
-      .slice(0, 6);
-    document.getElementById('recent-expenses').innerHTML = monthAll.length
-      ? monthAll.map(renderExpenseRowHTML).join('')
-      : '<p class="card-sub">Aucune dépense ce mois-ci.</p>';
   }
 
   /* ===================== Dépenses (liste complète) ===================== */
@@ -361,11 +278,22 @@
     document.getElementById('filter-type').addEventListener('change', e => { filters.type = e.target.value; renderExpenses(); });
     document.getElementById('filter-person').addEventListener('change', e => { filters.personId = e.target.value; renderExpenses(); });
     document.getElementById('filter-month').addEventListener('change', e => { filters.month = e.target.value; renderExpenses(); });
+    document.getElementById('filter-recurring-person').addEventListener('change', e => { filters.recurringPersonId = e.target.value; renderRecurring(); });
   }
 
   /* ===================== Récurrentes ===================== */
+  function populateRecurringFilterOptions() {
+    const sel = document.getElementById('filter-recurring-person');
+    sel.innerHTML = '<option value="all">Tout le monde</option>' +
+      state.people.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+    sel.value = filters.recurringPersonId;
+  }
+
   function renderRecurring() {
-    const rules = state.recurring.slice().sort((a, b) => (a.label || '').localeCompare(b.label || ''));
+    populateRecurringFilterOptions();
+    const rules = state.recurring
+      .filter(r => filters.recurringPersonId === 'all' || r.personId === filters.recurringPersonId)
+      .slice().sort((a, b) => (a.label || '').localeCompare(b.label || ''));
     document.getElementById('recurring-empty').hidden = rules.length !== 0;
     const today = todayStr();
     const freqLabels = { monthly: 'Mensuelle', weekly: 'Hebdomadaire', yearly: 'Annuelle' };
@@ -458,6 +386,9 @@
   }
 
   function syncSettingsValues() {
+    const current = personById(myPersonId);
+    document.getElementById('current-profile-name').textContent = current ? current.name : '—';
+
     const peopleForm = document.getElementById('settings-people-form');
     peopleForm.name0.value = state.people[0].name;
     peopleForm.salary0.value = state.people[0].salary || '';
@@ -475,6 +406,10 @@
   function ensureSettingsBuilt() {
     if (settingsBuilt) { syncSettingsValues(); return; }
     settingsBuilt = true;
+
+    document.getElementById('switch-profile-btn').addEventListener('click', () => {
+      showProfileGate();
+    });
 
     const peopleForm = document.getElementById('settings-people-form');
     peopleForm.addEventListener('input', () => {
@@ -758,6 +693,52 @@
     renderAll();
   }
 
+  /* ===================== Récompense loisirs de fin de mois ===================== */
+  // Au premier affichage après le passage à un nouveau mois, propose à la
+  // personne active de garder en épargne (rien à faire) ou d'ajouter à son
+  // budget loisirs de ce mois-ci le reliquat non dépensé le mois précédent.
+  // Une seule proposition par personne et par mois (state.loisirsRewards).
+  let pendingReward = null;
+
+  function checkLoisirsReward() {
+    if (!myPersonId) return;
+    const prevMonth = shiftMonth(todayStr().slice(0, 7), -1);
+    const already = state.loisirsRewards[prevMonth] && state.loisirsRewards[prevMonth][myPersonId];
+    if (already) return;
+    const usage = Calculations.computeLoisirsUsage(state, prevMonth).find(u => u.id === myPersonId);
+    if (!usage || usage.budget <= 0) return;
+    const leftover = usage.budget - usage.spent;
+    if (leftover <= 0.5) return; // pas assez pour que ça vaille une récompense
+    pendingReward = { monthKey: prevMonth, amount: leftover };
+    document.getElementById('reward-text').textContent =
+      `Il vous restait ${formatCurrency(leftover)} de budget loisirs en ${formatMonthLabel(prevMonth)}. Envie de le garder de côté, ou de vous faire plaisir ce mois-ci ?`;
+    document.getElementById('reward-modal').showModal();
+  }
+
+  function recordLoisirsRewardDecision(decision) {
+    if (!pendingReward) return;
+    const { monthKey, amount } = pendingReward;
+    if (!state.loisirsRewards[monthKey]) state.loisirsRewards[monthKey] = {};
+    state.loisirsRewards[monthKey][myPersonId] = decision;
+    if (decision === 'added') {
+      const currentMonthKey = todayStr().slice(0, 7);
+      if (!state.loisirsBonuses[currentMonthKey]) state.loisirsBonuses[currentMonthKey] = {};
+      state.loisirsBonuses[currentMonthKey][myPersonId] = (Number(state.loisirsBonuses[currentMonthKey][myPersonId]) || 0) + amount;
+    }
+    pendingReward = null;
+    document.getElementById('reward-modal').close();
+    persist();
+    renderAll();
+  }
+
+  function bindRewardModal() {
+    document.getElementById('reward-modal-close').addEventListener('click', () => {
+      document.getElementById('reward-modal').close();
+    });
+    document.getElementById('reward-save-btn').addEventListener('click', () => recordLoisirsRewardDecision('saved'));
+    document.getElementById('reward-spend-btn').addEventListener('click', () => recordLoisirsRewardDecision('added'));
+  }
+
   function bindModal() {
     document.getElementById('fab-add').addEventListener('click', openAddExpenseModal);
     document.getElementById('expense-modal-close').addEventListener('click', closeExpenseModal);
@@ -803,22 +784,59 @@
     navigator.serviceWorker.register('service-worker.js').catch(err => console.warn('Service worker non enregistré :', err));
   }
 
-  /* ===================== Authentification ===================== */
+  /* ===================== Authentification & choix de profil ===================== */
   function showLoginGate() {
     document.getElementById('login-gate').hidden = false;
+    document.getElementById('profile-gate').hidden = true;
     document.getElementById('app').hidden = true;
   }
 
   function showApp() {
     document.getElementById('login-gate').hidden = true;
+    document.getElementById('profile-gate').hidden = true;
     document.getElementById('app').hidden = false;
   }
 
+  function showProfileGate() {
+    document.getElementById('login-gate').hidden = true;
+    document.getElementById('app').hidden = true;
+    document.getElementById('profile-gate').hidden = false;
+    document.querySelectorAll('.profile-gate-opt').forEach((btn, idx) => {
+      const p = state.people[idx];
+      if (!p) return;
+      btn.querySelector('.profile-gate-name').textContent = p.name;
+      const av = btn.querySelector('.avatar');
+      av.textContent = initial(p.name);
+      av.className = 'avatar ' + (idx === 1 ? 'avatar-b' : 'avatar-a');
+    });
+  }
+
+  function bindProfileGate() {
+    document.querySelectorAll('.profile-gate-opt').forEach((btn, idx) => {
+      btn.addEventListener('click', () => {
+        const p = state.people[idx];
+        if (!p) return;
+        myPersonId = p.id;
+        try { localStorage.setItem('myPersonId', p.id); } catch (e) { /* ignore */ }
+        filters.personId = p.id;
+        filters.recurringPersonId = p.id;
+        if (appFullyStarted) {
+          document.getElementById('profile-gate').hidden = true;
+          document.getElementById('app').hidden = false;
+          renderAll();
+          checkLoisirsReward();
+        } else {
+          appFullyStarted = true;
+          finishStartup();
+        }
+      });
+    });
+  }
+
   /* ===================== Démarrage ===================== */
-  function startAppFor() {
-    firstSnapshotSeen = false;
-    try { myPersonId = localStorage.getItem('myPersonId') || (state.people[0] && state.people[0].id) || null; }
-    catch (e) { myPersonId = state.people[0] ? state.people[0].id : null; }
+  let appFullyStarted = false;
+
+  function finishStartup() {
     runRecurringGeneration();
     Storage.save(state);
     showApp();
@@ -826,17 +844,33 @@
     showView('dashboard');
     updateSyncBadge();
     startDataSync();
+    checkLoisirsReward();
+  }
+
+  function startAppFor() {
+    firstSnapshotSeen = false;
+    let stored = null;
+    try { stored = localStorage.getItem('myPersonId'); } catch (e) { /* ignore */ }
+    if (stored && state.people.some(p => p.id === stored)) {
+      myPersonId = stored;
+      filters.personId = stored;
+      filters.recurringPersonId = stored;
+      appFullyStarted = true;
+      finishStartup();
+    } else {
+      showProfileGate();
+    }
   }
 
   function init() {
     bindNav();
     bindFilters();
-    bindExpenseRowClicks('recent-expenses');
     bindExpenseRowClicks('expenses-full-list');
     bindRecurringList();
     bindHistoryList();
     bindModal();
-    bindPersonSwitch();
+    bindProfileGate();
+    bindRewardModal();
     registerServiceWorker();
 
     if (!window.FirebaseSync) {

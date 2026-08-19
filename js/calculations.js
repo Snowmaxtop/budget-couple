@@ -203,8 +203,10 @@ const Calculations = (() => {
 
   // Pour chaque personne : ce qu'elle a dépensé ce mois-ci en "Loisirs"
   // (dépenses personnelles catégorisées Loisirs), face à son budget défini
-  // dans Réglages.
+  // dans Réglages, plus une éventuelle prime reportée du mois précédent
+  // (choix "Ajouter à mes loisirs" dans la récompense de fin de mois).
   function computeLoisirsUsage(state, monthKey) {
+    const bonuses = (state.loisirsBonuses && state.loisirsBonuses[monthKey]) || {};
     return state.people.map(p => {
       const spent = state.expenses
         .filter(e => e.personId === p.id
@@ -213,9 +215,10 @@ const Calculations = (() => {
           && monthKeyOf(e.date) === monthKey
           && (e.category || '').trim().toLowerCase() === 'loisirs')
         .reduce((s, e) => s + (Number(e.amount) || 0), 0);
-      const budget = Number(p.loisirs) || 0;
+      const bonus = Number(bonuses[p.id]) || 0;
+      const budget = (Number(p.loisirs) || 0) + bonus;
       const barPct = budget > 0 ? Math.min(100, (spent / budget) * 100) : (spent > 0 ? 100 : 0);
-      return { id: p.id, name: p.name, spent, budget, barPct, over: spent > budget };
+      return { id: p.id, name: p.name, spent, budget, bonus, barPct, over: spent > budget };
     });
   }
 
