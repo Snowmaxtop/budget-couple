@@ -59,14 +59,16 @@
     scheduleFirestoreWrite();
   }
 
-  // Génère les échéances jusqu'à la fin du mois AFFICHÉ (pas seulement
-  // jusqu'à aujourd'hui) : une récurrence dont le jour n'est pas encore
-  // passé ce mois-ci (ex. loyer le 5, on est le 3) doit quand même compter
-  // dans les dépenses communes et les remboursements du mois en cours. Si le
-  // mois affiché est déjà passé, ça revient simplement à générer jusqu'à
-  // aujourd'hui comme avant.
+  // Génère les échéances jusqu'à la fin du mois RÉEL en cours (pas du mois
+  // affiché à l'écran) : une récurrence dont le jour n'est pas encore passé
+  // ce mois-ci (ex. loyer le 5, on est le 3) doit quand même compter dans
+  // les dépenses communes du mois. On s'arrête volontairement à la fin du
+  // mois réel — naviguer vers un mois futur avec les flèches ne doit PAS
+  // générer ses échéances à l'avance : si une récurrence change de montant
+  // avant que ce mois n'arrive vraiment, une échéance déjà générée trop tôt
+  // garderait l'ancien montant.
   function runRecurringGeneration() {
-    const boundary = endOfMonth(currentMonth) > todayStr() ? endOfMonth(currentMonth) : todayStr();
+    const boundary = endOfMonth(todayStr().slice(0, 7));
     return Recurring.generateMissingInstances(state, boundary);
   }
 
@@ -579,6 +581,10 @@
     expenseForm.isRecurring.value = isRecurring ? 'true' : 'false';
     document.querySelector('.field-group-oneoff').hidden = isRecurring;
     document.querySelector('.field-group-recurring').hidden = !isRecurring;
+    // La carte resto varie à chaque achat : n'a de sens que sur une dépense
+    // ponctuelle précise, pas sur le modèle d'une récurrence.
+    document.getElementById('resto-section').hidden = isRecurring;
+    if (isRecurring) setRestoUI(0);
   }
 
   function updateSplitModeVisibility() {
