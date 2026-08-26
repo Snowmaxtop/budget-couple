@@ -57,6 +57,7 @@
   function persist() {
     Storage.save(state);
     scheduleFirestoreWrite();
+    scheduleGithubBackup();
   }
 
   // Génère les échéances jusqu'à la fin du mois RÉEL en cours (pas du mois
@@ -452,6 +453,14 @@
     loisirsForm.loisirs1.value = state.people[1].loisirs || '';
     refreshBudgetPersonNames();
     renderBudgetBreakdown();
+
+    const ghForm = document.getElementById('github-backup-form');
+    ghForm.owner.value = githubBackupConfig.owner;
+    ghForm.repo.value = githubBackupConfig.repo;
+    ghForm.branch.value = githubBackupConfig.branch;
+    ghForm.path.value = githubBackupConfig.path;
+    ghForm.token.value = githubBackupConfig.token;
+    ghForm.enabled.checked = githubBackupConfig.enabled;
   }
 
   function ensureSettingsBuilt() {
@@ -506,6 +515,19 @@
         .catch(err => { setSyncStatus('Erreur : ' + err.message, true); updateSyncBadge('error'); });
     });
 
+    const ghForm = document.getElementById('github-backup-form');
+    ghForm.addEventListener('input', () => {
+      githubBackupConfig.owner = ghForm.owner.value.trim();
+      githubBackupConfig.repo = ghForm.repo.value.trim();
+      githubBackupConfig.branch = ghForm.branch.value.trim() || 'main';
+      githubBackupConfig.path = ghForm.path.value.trim() || 'data/budget-backup.json';
+      githubBackupConfig.token = ghForm.token.value;
+      githubBackupConfig.enabled = ghForm.enabled.checked;
+      saveGithubBackupConfig();
+    });
+    document.getElementById('github-backup-now-btn').addEventListener('click', pushGithubBackup);
+    document.getElementById('github-restore-btn').addEventListener('click', restoreGithubBackup);
+
     syncSettingsValues();
   }
 
@@ -539,8 +561,15 @@
         updateSyncBadge('ok');
         return;
       }
+      const isFirstSnapshot = !firstSnapshotSeen;
       firstSnapshotSeen = true;
-      if (data.updatedAt && state.updatedAt && data.updatedAt <= state.updatedAt) {
+      // La comparaison de dates ne sert qu'à éviter d'écraser une modification
+      // locale très récente par un écho un peu périmé — elle n'a aucun sens
+      // pour le tout premier chargement d'un appareil : un état local jamais
+      // synchronisé (donc sans aucune valeur) ne doit jamais l'emporter sur
+      // des données distantes déjà existantes, même si son horodatage
+      // "updatedAt" (généré au démarrage) paraît plus récent.
+      if (!isFirstSnapshot && data.updatedAt && state.updatedAt && data.updatedAt <= state.updatedAt) {
         updateSyncBadge('ok');
         return; // ce qu'on a localement est déjà identique ou plus récent
       }
@@ -569,6 +598,76 @@
     if (!el) return;
     el.textContent = msg;
     el.classList.toggle('error', !!isError);
+  }
+
+  /* ===================== Sauvegarde automatique GitHub ===================== */
+  // En parallèle de Firebase (qui reste la synchro en direct entre les deux
+  // appareils) : à chaque modification, un fichier complet est aussi écrit
+  // dans un dépôt GitHub via un token propre à cet appareil. Uniquement du
+  // push automatique (pas de tirage périodique) — c'est une sauvegarde, pas
+  // un second canal de synchro ; restaurer reste une action volontaire.
+  let githubBackupConfig = loadGithubBackupConfig();
+  let githubBackupTimer = null;
+
+  function loadGithubBackupConfig() {
+    const defaults = { owner: '', repo: '', branch: 'main', path: 'data/budget-backup.json', token: '', enabled: false };
+    try {
+      const raw = localStorage.getItem('githubBackupConfig');
+      return raw ? { ...defaults, ...JSON.parse(raw) } : defaults;
+    } catch (e) {
+      return defaults;
+    }
+  }
+
+  function saveGithubBackupConfig() {
+    try { localStorage.setItem('githubBackupConfig', JSON.stringify(githubBackupConfig)); } catch (e) { /* ignore */ }
+  }
+
+  function scheduleGithubBackup() {
+    if (!githubBackupConfig.enabled) return;
+    clearTimeout(githubBackupTimer);
+    githubBackupTimer = setTimeout(() => pushGithubBackup(), 4000);
+  }
+
+  function setGithubBackupStatus(msg, isError) {
+    const el = document.getElementById('github-backup-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.toggle('error', !!isError);
+  }
+
+  function githubBackupConfigured() {
+    return !!(githubBackupConfig.owner && githubBackupConfig.repo && githubBackupConfig.token);
+  }
+
+  async function pushGithubBackup() {
+    if (!githubBackupConfigured()) { setGithubBackupStatus('Configuration incomplète.', true); return; }
+    try {
+      setGithubBackupStatus('Sauvegarde en cours…');
+      const { sha } = await GitHubBackup.getFile(githubBackupConfig);
+      await GitHubBackup.putFile(githubBackupConfig, state, sha);
+      setGithubBackupStatus('Sauvegardé à ' + new Date().toLocaleTimeString('fr-FR'));
+    } catch (err) {
+      setGithubBackupStatus('Erreur : ' + err.message, true);
+    }
+  }
+
+  async function restoreGithubBackup() {
+    if (!githubBackupConfigured()) { setGithubBackupStatus('Configuration incomplète.', true); return; }
+    if (!confirm('Restaurer remplacera toutes les données actuelles (ici et pour votre partenaire une fois resynchronisé) par la dernière sauvegarde GitHub. Continuer ?')) return;
+    try {
+      setGithubBackupStatus('Restauration en cours…');
+      const { data } = await GitHubBackup.getFile(githubBackupConfig);
+      if (!data) { setGithubBackupStatus('Aucune sauvegarde trouvée sur GitHub pour l\u2019instant.', true); return; }
+      state = Storage.mergeWithDefaults(data);
+      Storage.save(state);
+      renderAll();
+      if (currentView === 'settings') syncSettingsValues();
+      scheduleFirestoreWrite();
+      setGithubBackupStatus('Restauré à ' + new Date().toLocaleTimeString('fr-FR'));
+    } catch (err) {
+      setGithubBackupStatus('Erreur : ' + err.message, true);
+    }
   }
 
   /* ===================== Modale dépense ===================== */
