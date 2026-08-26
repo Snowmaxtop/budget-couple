@@ -195,20 +195,6 @@ h1, h2, h3, p { margin: 0; }
 }
 .month-label { font-weight: 700; font-size: 1rem; min-width: 160px; text-align: center; text-transform: capitalize; }
 
-/* ===== Hero / split ribbon ===== */
-.hero-card { text-align: center; }
-.hero-label { color: var(--ink-soft); font-size: .82rem; font-weight: 600; }
-.hero-amount { font-size: 2.4rem; font-weight: 800; letter-spacing: -0.02em; margin: 4px 0 18px; }
-
-.split-ribbon {
-  display: flex; width: 100%; height: 40px;
-  border-radius: 100px; overflow: hidden;
-  box-shadow: inset 0 0 0 1px var(--line);
-}
-.split-seg { display: flex; align-items: center; justify-content: center; font-size: .78rem; font-weight: 700; color: #fff; transition: flex-basis .3s ease; min-width: 46px; }
-.split-a { background: var(--rose); }
-.split-b { background: var(--sage); }
-
 /* ===== Balance card ===== */
 .balance-card { text-align: center; }
 .balance-block + .balance-block { margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--line); }
@@ -216,14 +202,6 @@ h1, h2, h3, p { margin: 0; }
 .balance-message { font-size: 1.02rem; font-weight: 700; margin-bottom: 14px; line-height: 1.4; }
 .balance-actions { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .settled-note { color: var(--sage-deep); font-size: .82rem; font-weight: 600; }
-
-/* ===== Category breakdown ===== */
-.category-breakdown { display: flex; flex-direction: column; gap: 10px; }
-.cat-row { display: grid; grid-template-columns: 90px 1fr 70px; align-items: center; gap: 10px; font-size: .82rem; }
-.cat-name { color: var(--ink-soft); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cat-bar-track { background: var(--surface-2); border-radius: 100px; height: 8px; overflow: hidden; }
-.cat-bar-fill { background: var(--rose); height: 100%; border-radius: 100px; }
-.cat-amount { text-align: right; font-weight: 700; }
 
 /* ===== Expense list ===== */
 .expense-list { display: flex; flex-direction: column; gap: 2px; }
@@ -390,16 +368,6 @@ h1, h2, h3, p { margin: 0; }
 
 .commun-amount { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.01em; margin-bottom: 4px; }
 
-.itemized-list { display: flex; flex-direction: column; margin-bottom: 12px; }
-.itemized-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-.itemized-row:last-child { border-bottom: none; }
-.itemized-main { flex: 1; min-width: 0; }
-.itemized-label { font-size: .85rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.itemized-tag { font-size: .7rem; color: var(--ink-soft); margin-top: 1px; }
-.itemized-amount { text-align: right; white-space: nowrap; }
-.itemized-total { font-size: .9rem; font-weight: 800; }
-.itemized-share { font-size: .72rem; color: var(--ink-soft); margin-top: 1px; }
-
 /* ===== Modal ===== */
 dialog {
   border: none; border-radius: var(--radius-lg) var(--radius-lg) 0 0;
@@ -422,12 +390,6 @@ dialog::backdrop { background: rgba(35,32,29,.35); }
   font-weight: 700; font-size: .82rem; color: var(--ink-soft); cursor: pointer;
 }
 .segmented-opt.active { background: var(--white); color: var(--ink); box-shadow: var(--shadow-sm); }
-.person-switch-opt {
-  flex: 1; border: none; background: none; padding: 9px 0; border-radius: 100px;
-  font-weight: 700; font-size: .82rem; color: var(--ink-soft); cursor: pointer;
-}
-.person-switch-opt.active { background: var(--white); color: var(--ink); box-shadow: var(--shadow-sm); }
-#person-switch { margin-bottom: 14px; }
 .static-type-label { font-weight: 700; font-size: .85rem; color: var(--ink-soft); background: var(--surface-2); border-radius: 100px; padding: 9px 0; text-align: center; }
 
 @media (min-width: 720px) {
