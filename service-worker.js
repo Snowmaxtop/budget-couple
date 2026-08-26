@@ -3,7 +3,7 @@
 // (v4 -> v5, etc.) pour forcer le rafraîchissement du cache chez les
 // utilisateurs. Les appels vers des domaines externes (Firebase, etc.) ne
 // sont jamais interceptés : seul le "coquille" de l'app est mis en cache ici.
-const CACHE_NAME = 'budget-couple-v4';
+const CACHE_NAME = 'budget-couple-v17';
 const ASSETS = [
   './',
   './index.html',
@@ -12,6 +12,7 @@ const ASSETS = [
   './js/storage.js',
   './js/calculations.js',
   './js/recurring.js',
+  './js/github-backup.js',
   './js/firebase-sync.js',
   './js/firebase-config.js',
   './js/app.js',
