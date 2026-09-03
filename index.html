@@ -1,406 +1,114 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Budget à Deux</title>
-<meta name="description" content="Gestion des dépenses personnelles et communes en couple, avec répartition automatique au prorata des salaires.">
-<meta name="theme-color" content="#FAF9F7">
-<link rel="manifest" href="manifest.json">
-<link rel="icon" href="icons/icon-192.png">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Budget">
-<link rel="stylesheet" href="css/style.css">
-</head>
-<body>
+/* Recurring — génère automatiquement les échéances (dépenses) à partir des
+   modèles récurrents, jusqu'à la date du jour. Le jour du mois / jour de la
+   semaine / date anniversaire est déduit de la "première échéance" saisie. */
+const Recurring = (() => {
 
-<!-- ===== Écran de chargement (connexion Firebase automatique) ===== -->
-<div id="login-gate" class="login-gate">
-  <div class="login-card">
-    <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
-      <rect width="40" height="40" rx="10" fill="var(--rose)"/>
-      <circle cx="16.5" cy="20" r="7.2" fill="#fff" fill-opacity="0.92"/>
-      <circle cx="23.5" cy="20" r="7.2" fill="#fff" fill-opacity="0.62"/>
-    </svg>
-    <h1>Budget à Deux</h1>
-    <p class="card-sub" id="login-status">Connexion…</p>
-    <p class="login-error" id="login-error" hidden></p>
-  </div>
-</div>
+  function clampDay(year, monthIndex, day) {
+    const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+    return Math.min(day, lastDay);
+  }
 
-<!-- ===== Choix de profil (une fois par appareil) ===== -->
-<div id="profile-gate" class="login-gate" hidden>
-  <div class="login-card">
-    <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
-      <rect width="40" height="40" rx="10" fill="var(--rose)"/>
-      <circle cx="16.5" cy="20" r="7.2" fill="#fff" fill-opacity="0.92"/>
-      <circle cx="23.5" cy="20" r="7.2" fill="#fff" fill-opacity="0.62"/>
-    </svg>
-    <h1>Qui utilise cet appareil ?</h1>
-    <p class="card-sub">Tout l'app (Accueil, Dépenses, Récurrentes, Réglages) s'affichera selon votre choix. Modifiable à tout moment dans Réglages.</p>
-    <div class="profile-gate-options">
-      <button type="button" class="profile-gate-opt" data-person-index="0">
-        <span class="avatar avatar-a">—</span>
-        <span class="profile-gate-name">—</span>
-      </button>
-      <button type="button" class="profile-gate-opt" data-person-index="1">
-        <span class="avatar avatar-b">—</span>
-        <span class="profile-gate-name">—</span>
-      </button>
-    </div>
-  </div>
-</div>
+  function toISO(year, monthIndex, day) {
+    const mm = String(monthIndex + 1).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    return `${year}-${mm}-${dd}`;
+  }
 
-<div id="app" hidden>
+  // Toutes les occurrences d'une règle entre sa première échéance et `uptoDateStr` inclus.
+  function occurrencesUpTo(rule, uptoDateStr) {
+    if (!rule.startDate) return [];
+    const upto = new Date(uptoDateStr + 'T00:00:00');
+    const start = new Date(rule.startDate + 'T00:00:00');
+    const end = rule.endDate ? new Date(rule.endDate + 'T00:00:00') : null;
+    const dates = [];
 
-  <!-- ===== En-tête ===== -->
-  <header class="app-header">
-    <div class="brand">
-      <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
-        <rect width="40" height="40" rx="10" fill="var(--rose)"/>
-        <circle cx="16.5" cy="20" r="7.2" fill="#fff" fill-opacity="0.92"/>
-        <circle cx="23.5" cy="20" r="7.2" fill="#fff" fill-opacity="0.62"/>
-      </svg>
-      <span class="brand-name">Budget à Deux</span>
-    </div>
-    <div id="sync-badge" class="sync-badge" hidden>
-      <span class="dot"></span>
-      <span id="sync-badge-text">Synchronisé</span>
-    </div>
-  </header>
+    if (rule.frequency === 'weekly') {
+      let cur = new Date(start);
+      let guard = 0;
+      while (cur <= upto && (!end || cur <= end) && guard < 2000) {
+        dates.push(cur.toISOString().slice(0, 10));
+        cur.setDate(cur.getDate() + 7);
+        guard++;
+      }
+    } else if (rule.frequency === 'yearly') {
+      let year = start.getFullYear();
+      const monthIndex = start.getMonth();
+      const day = start.getDate();
+      let guard = 0;
+      while (guard < 200) {
+        const d = clampDay(year, monthIndex, day);
+        const iso = toISO(year, monthIndex, d);
+        const dateObj = new Date(iso + 'T00:00:00');
+        if (dateObj > upto || (end && dateObj > end)) break;
+        if (dateObj >= start) dates.push(iso);
+        year += 1;
+        guard++;
+      }
+    } else { // monthly (défaut)
+      let year = start.getFullYear();
+      let monthIndex = start.getMonth();
+      const day = start.getDate();
+      let guard = 0;
+      while (guard < 1200) {
+        const d = clampDay(year, monthIndex, day);
+        const iso = toISO(year, monthIndex, d);
+        const dateObj = new Date(iso + 'T00:00:00');
+        if (dateObj > upto || (end && dateObj > end)) break;
+        if (dateObj >= start) dates.push(iso);
+        monthIndex += 1;
+        if (monthIndex > 11) { monthIndex = 0; year += 1; }
+        guard++;
+      }
+    }
+    return dates;
+  }
 
-  <!-- ===== Navigation ===== -->
-  <nav class="nav" id="main-nav" aria-label="Navigation principale">
-    <button class="nav-item" data-view="dashboard" aria-label="Accueil">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M4 11.5 12 4l8 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-6h4v6h3a1 1 0 0 0 1-1v-9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span>Accueil</span>
-    </button>
-    <button class="nav-item" data-view="expenses" aria-label="Dépenses">
-      <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="5" width="16" height="14" rx="2.2" stroke="currentColor" stroke-width="1.8"/><path d="M4 10h16" stroke="currentColor" stroke-width="1.8"/><path d="M8 14.2h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      <span>Dépenses</span>
-    </button>
-    <button class="nav-item" data-view="recurring" aria-label="Récurrentes">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 0 1 13.66-5.66L20 8.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M20 4.5v4h-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 12a8 8 0 0 1-13.66 5.66L4 15.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4 19.5v-4h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span>Récurrentes</span>
-    </button>
-    <button class="nav-item" data-view="history" aria-label="Historique">
-      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12.5" r="8" stroke="currentColor" stroke-width="1.8"/><path d="M12 8.5v4.3l3 1.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span>Historique</span>
-    </button>
-    <button class="nav-item" data-view="settings" aria-label="Réglages">
-      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.1" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2.06 2.06 0 1 1-2.92 2.92l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56v.17a2.06 2.06 0 1 1-4.12 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2.06 2.06 0 1 1-2.92-2.92l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03h-.17a2.06 2.06 0 1 1 0-4.12h.09A1.7 1.7 0 0 0 5.15 7.3a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2.06 2.06 0 1 1 2.92-2.92l.06.06a1.7 1.7 0 0 0 1.87.34h.08A1.7 1.7 0 0 0 10.7 1.3v-.17a2.06 2.06 0 1 1 4.12 0v.09c.02.67.42 1.28 1.03 1.56h.08a1.7 1.7 0 0 0 1.87-.34l.06-.06a2.06 2.06 0 1 1 2.92 2.92l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08c.28.6.89 1 1.56 1.03h.17a2.06 2.06 0 1 1 0 4.12h-.09a1.7 1.7 0 0 0-1.56 1.03Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
-      <span>Réglages</span>
-    </button>
-  </nav>
+  // Crée dans state.expenses toutes les échéances manquantes jusqu'à aujourd'hui.
+  // Idempotent : ne recrée jamais une échéance déjà générée pour une même date.
+  function generateMissingInstances(state, todayStr) {
+    const created = [];
+    (state.recurring || []).filter(r => r.active !== false).forEach(rule => {
+      const dates = occurrencesUpTo(rule, todayStr);
+      dates.forEach(dateStr => {
+        const exists = state.expenses.some(e => e.recurringId === rule.id && e.date === dateStr);
+        if (!exists) {
+          const expense = {
+            id: genId(),
+            label: rule.label,
+            amount: rule.amount,
+            type: rule.type,
+            personId: rule.personId,
+            category: rule.category,
+            splitMode: rule.splitMode || 'prorata',
+            splitPercent: rule.splitPercent != null ? rule.splitPercent : null,
+            date: dateStr,
+            recurringId: rule.id,
+            createdAt: new Date().toISOString()
+          };
+          state.expenses.push(expense);
+          created.push(expense);
+        }
+      });
+    });
+    return created;
+  }
 
-  <!-- ===== Contenu ===== -->
-  <main class="content">
+  function nextOccurrence(rule, fromDateStr) {
+    const lookahead = addYears(fromDateStr, 2);
+    const all = occurrencesUpTo(rule, lookahead);
+    return all.find(d => d > fromDateStr) || null;
+  }
 
-    <!-- ---------- Accueil / Dashboard ---------- -->
-    <section class="view" id="view-dashboard">
-      <div class="month-switcher">
-        <button class="icon-btn" id="prev-month" aria-label="Mois précédent">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M15 5 8 12l7 7" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <div class="month-label" id="month-label">—</div>
-        <button class="icon-btn" id="next-month" aria-label="Mois suivant">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-      </div>
+  function addYears(dateStr, years) {
+    const d = new Date(dateStr + 'T00:00:00');
+    d.setFullYear(d.getFullYear() + years);
+    return d.toISOString().slice(0, 10);
+  }
 
-      <div id="onboarding-hint" class="hint-card" hidden>
-        Ajoutez vos deux salaires dans <button class="link-btn" data-goto="settings">Réglages</button> pour que la répartition se calcule automatiquement.
-      </div>
+  function genId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9);
+  }
 
-      <h2 class="section-heading">Personnel</h2>
-
-      <div class="gauge-card" id="personal-loisirs-card"></div>
-
-      <div class="card">
-        <div class="section-title-row">
-          <h2 class="section-title">Détail (ce mois)</h2>
-        </div>
-        <div id="personal-expenses-list" class="expense-list"></div>
-      </div>
-
-      <div class="card" id="savings-card">
-        <div class="balance-block-title">Épargne</div>
-        <div class="balance-message" id="savings-message">—</div>
-        <div class="balance-actions">
-          <button class="btn btn-primary" id="savings-validate-btn">J'ai épargné ce mois-ci</button>
-          <div class="settled-note" id="savings-note" hidden></div>
-          <p class="reward-message" id="savings-reward" hidden>🎉 Félicitations, ton toi du futur te remercie !</p>
-        </div>
-      </div>
-
-      <div class="section-divider"></div>
-
-      <h2 class="section-heading">Commun</h2>
-
-      <div class="card">
-        <div class="balance-block-title">Doit donner en début de mois</div>
-        <div class="commun-amount" id="commun-recurring-amount">0,00&nbsp;€</div>
-        <div class="balance-message" id="balance-message-recurring">—</div>
-        <div class="balance-actions">
-          <button class="btn btn-primary" id="settle-recurring-btn">Marquer comme réglé</button>
-          <div class="settled-note" id="settled-note-recurring" hidden></div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="balance-block-title">Doit donner en fin de mois</div>
-        <div class="commun-amount" id="commun-rest-amount">0,00&nbsp;€</div>
-        <div class="balance-message" id="balance-message-rest">—</div>
-        <div class="balance-actions">
-          <button class="btn btn-primary" id="settle-rest-btn">Marquer comme réglé</button>
-          <div class="settled-note" id="settled-note-rest" hidden></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ---------- Dépenses ---------- -->
-    <section class="view" id="view-expenses">
-      <div class="filters-row">
-        <select id="filter-type" class="select-chip">
-          <option value="all">Toutes</option>
-          <option value="commun">Communes</option>
-          <option value="perso">Personnelles</option>
-        </select>
-        <select id="filter-person" class="select-chip"></select>
-        <select id="filter-month" class="select-chip"></select>
-      </div>
-      <div id="expenses-full-list" class="expense-list expense-list-grouped"></div>
-      <div id="expenses-empty" class="empty-state" hidden>
-        <p>Aucune dépense pour l'instant.</p>
-        <p class="empty-sub">Utilisez le bouton + pour ajouter votre première dépense.</p>
-      </div>
-    </section>
-
-    <!-- ---------- Récurrentes ---------- -->
-    <section class="view" id="view-recurring">
-      <div class="filters-row">
-        <select id="filter-recurring-person" class="select-chip"></select>
-      </div>
-      <div id="recurring-list" class="recurring-list"></div>
-      <div id="recurring-empty" class="empty-state" hidden>
-        <p>Aucune dépense récurrente.</p>
-        <p class="empty-sub">Loyer, abonnements, assurances… ajoutez-les une fois, elles se génèrent seules chaque mois.</p>
-      </div>
-    </section>
-
-    <!-- ---------- Historique ---------- -->
-    <section class="view" id="view-history">
-      <div id="history-list" class="history-list"></div>
-      <div id="history-empty" class="empty-state" hidden>
-        <p>Pas encore d'historique.</p>
-        <p class="empty-sub">Chaque mois avec des dépenses communes apparaîtra ici.</p>
-      </div>
-    </section>
-
-    <!-- ---------- Réglages ---------- -->
-    <section class="view" id="view-settings">
-
-      <div class="card">
-        <h2 class="section-title">Profil</h2>
-        <p class="card-sub">Cet appareil est configuré pour <strong id="current-profile-name">—</strong>. L'Accueil, les Dépenses et les Récurrentes s'affichent selon ce choix.</p>
-        <button class="btn btn-secondary" id="switch-profile-btn">Changer de profil</button>
-      </div>
-
-      <div class="card">
-        <h2 class="section-title">Vos salaires</h2>
-        <p class="card-sub">La répartition des dépenses communes se recalcule automatiquement à partir de ces montants.</p>
-        <form id="settings-people-form" class="stacked-form">
-          <div class="person-row">
-            <span class="avatar avatar-a">A</span>
-            <input type="text" name="name0" class="input" placeholder="Prénom">
-            <input type="number" name="salary0" class="input" placeholder="Salaire net €" min="0" step="1" inputmode="decimal">
-          </div>
-          <div class="person-row">
-            <span class="avatar avatar-b">B</span>
-            <input type="text" name="name1" class="input" placeholder="Prénom">
-            <input type="number" name="salary1" class="input" placeholder="Salaire net €" min="0" step="1" inputmode="decimal">
-          </div>
-        </form>
-        <div class="shares-preview" id="shares-preview"></div>
-      </div>
-
-      <div class="card">
-        <h2 class="section-title">Budget loisirs &amp; épargne</h2>
-        <p class="card-sub">Le budget loisirs se règle à la main. La part des dépenses communes récurrentes et l'épargne estimée se calculent automatiquement à partir de vos salaires et de vos dépenses récurrentes communes actives.</p>
-        <form id="settings-loisirs-form" class="stacked-form">
-          <div class="person-row">
-            <span class="avatar avatar-a">A</span>
-            <span class="budget-person-name" id="loisirs-name0">—</span>
-            <input type="number" name="loisirs0" class="input" placeholder="Budget loisirs €" min="0" step="1" inputmode="decimal">
-          </div>
-          <div class="person-row">
-            <span class="avatar avatar-b">B</span>
-            <span class="budget-person-name" id="loisirs-name1">—</span>
-            <input type="number" name="loisirs1" class="input" placeholder="Budget loisirs €" min="0" step="1" inputmode="decimal">
-          </div>
-        </form>
-        <div class="budget-breakdown" id="budget-breakdown"></div>
-      </div>
-
-      <div class="card">
-        <h2 class="section-title">Sauvegarde</h2>
-        <p class="card-sub">Vos données sont synchronisées via Firebase. Exportez un fichier JSON de temps en temps si vous voulez garder une copie de secours en dehors du cloud.</p>
-        <div class="btn-row">
-          <button class="btn btn-secondary" id="export-btn">Exporter (.json)</button>
-          <label class="btn btn-secondary" for="import-input">Importer (.json)</label>
-          <input type="file" id="import-input" accept="application/json" hidden>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2 class="section-title">Synchronisation</h2>
-        <p class="card-sub">Les données sont synchronisées en temps réel avec l'autre appareil connecté au même projet Firebase.</p>
-        <div id="sync-status" class="sync-status"></div>
-        <div class="btn-row">
-          <button class="btn btn-secondary" id="account-retry-btn">Renvoyer maintenant</button>
-        </div>
-      </div>
-    </section>
-
-  </main>
-
-  <button class="fab" id="fab-add" aria-label="Ajouter une dépense">
-    <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
-  </button>
-</div>
-
-<!-- ===== Modale : ajouter / modifier une dépense ===== -->
-<dialog id="expense-modal">
-  <form id="expense-form" class="stacked-form modal-form">
-    <div class="modal-header">
-      <h2 id="expense-modal-title">Nouvelle dépense</h2>
-      <button type="button" class="icon-btn" id="expense-modal-close" aria-label="Fermer">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-
-    <div class="segmented" id="recurring-toggle-row">
-      <button type="button" class="segmented-opt active" data-recurring="false">Ponctuelle</button>
-      <button type="button" class="segmented-opt" data-recurring="true">Récurrente</button>
-    </div>
-    <div class="static-type-label" id="static-type-label" hidden></div>
-    <input type="hidden" name="isRecurring" id="isRecurring" value="false">
-
-    <label class="field-label">Libellé
-      <input type="text" name="label" class="input" placeholder="Loyer, courses, ciné…" required>
-    </label>
-
-    <div class="field-row-2">
-      <label class="field-label">Montant
-        <input type="number" name="amount" class="input" placeholder="0,00" min="0.01" step="0.01" inputmode="decimal" required>
-      </label>
-      <label class="field-label">Catégorie
-        <input type="text" name="category" class="input" list="category-suggestions" placeholder="Logement">
-        <datalist id="category-suggestions">
-          <option value="Logement">
-          <option value="Alimentation">
-          <option value="Transport">
-          <option value="Loisirs">
-          <option value="Santé">
-          <option value="Abonnements">
-          <option value="Assurances">
-          <option value="Autre">
-        </datalist>
-      </label>
-    </div>
-
-    <div class="field-row-2">
-      <label class="field-label">Type
-        <select name="type" class="input">
-          <option value="commun">Commune</option>
-          <option value="perso">Personnelle</option>
-        </select>
-      </label>
-      <label class="field-label">Payée par
-        <select name="personId" class="input" id="expense-person-select"></select>
-      </label>
-    </div>
-
-    <div class="field-group-oneoff">
-      <label class="field-label">Date
-        <input type="date" name="date" class="input">
-      </label>
-    </div>
-
-    <div class="split-mode-row" id="split-mode-row">
-      <label class="checkbox-row">
-        <input type="checkbox" name="splitFixed" id="split-fixed-toggle">
-        <span>Remboursement personnalisé (plutôt qu'au prorata)</span>
-      </label>
-      <div class="split-percent-row" id="split-percent-row" hidden>
-        <input type="range" name="splitPercent" id="split-percent" min="0" max="100" step="10" value="50">
-        <div class="split-percent-caption"><span id="split-percent-label">50%</span> remboursés par l'autre</div>
-      </div>
-
-      <div id="resto-section">
-        <label class="checkbox-row">
-          <input type="checkbox" name="hasResto" id="has-resto-toggle">
-          <span>Déjà payé en partie avec la carte resto</span>
-        </label>
-        <div class="resto-amount-row" id="resto-amount-row" hidden>
-          <label class="field-label">Montant payé avec la carte resto
-            <input type="number" name="restoAmount" class="input" placeholder="0,00" min="0" step="0.01" inputmode="decimal">
-          </label>
-          <p class="fine-print">Ce montant sera déduit avant de calculer ce qu'il y a à partager — il ne sort pas de votre poche.</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="field-group-recurring" hidden>
-      <label class="field-label">Fréquence
-        <select name="frequency" class="input">
-          <option value="monthly">Mensuelle</option>
-          <option value="weekly">Hebdomadaire</option>
-          <option value="yearly">Annuelle</option>
-        </select>
-      </label>
-      <div class="field-row-2">
-        <label class="field-label">Première échéance
-          <input type="date" name="startDate" class="input">
-        </label>
-        <label class="field-label">Fin (optionnel)
-          <input type="date" name="endDate" class="input">
-        </label>
-      </div>
-    </div>
-
-    <p class="fine-print" id="linked-recurring-note" hidden>Cette dépense provient d'une récurrence : la date n'est pas modifiable ici.</p>
-
-    <div class="modal-actions">
-      <button type="button" class="btn btn-danger-outline" id="expense-delete-btn" hidden>Supprimer</button>
-      <button type="submit" class="btn btn-primary">Enregistrer</button>
-    </div>
-  </form>
-</dialog>
-
-<!-- ===== Modale : récompense loisirs de fin de mois ===== -->
-<dialog id="reward-modal">
-  <div class="stacked-form modal-form">
-    <div class="modal-header">
-      <h2>🎉 Bravo !</h2>
-      <button type="button" class="icon-btn" id="reward-modal-close" aria-label="Fermer">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-    <p class="card-sub" id="reward-text">—</p>
-    <div class="modal-actions" style="justify-content: stretch; gap: 10px;">
-      <button type="button" class="btn btn-secondary" id="reward-save-btn" style="flex:1;">Garder en épargne</button>
-      <button type="button" class="btn btn-primary" id="reward-spend-btn" style="flex:1;">Ajouter à mes loisirs</button>
-    </div>
-  </div>
-</dialog>
-
-<script src="js/storage.js"></script>
-<script src="js/calculations.js"></script>
-<script src="js/recurring.js"></script>
-<script type="module" src="js/firebase-sync.js"></script>
-<script src="js/app.js"></script>
-</body>
-</html>
+  return { generateMissingInstances, occurrencesUpTo, nextOccurrence, genId };
+})();

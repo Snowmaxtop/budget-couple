@@ -1,62 +1,64 @@
-// Service worker : met en cache l'essentiel de l'app pour qu'elle s'ouvre hors
-// ligne. Après une modification du code, pensez à incrémenter CACHE_NAME
-// (v4 -> v5, etc.) pour forcer le rafraîchissement du cache chez les
-// utilisateurs. Les appels vers des domaines externes (Firebase, etc.) ne
-// sont jamais interceptés : seul le "coquille" de l'app est mis en cache ici.
-const CACHE_NAME = 'budget-couple-v17';
-const ASSETS = [
-  './',
-  './index.html',
-  './manifest.json',
-  './css/style.css',
-  './js/storage.js',
-  './js/calculations.js',
-  './js/recurring.js',
-  './js/github-backup.js',
-  './js/firebase-sync.js',
-  './js/firebase-config.js',
-  './js/app.js',
-  './fonts/manrope-400.woff2',
-  './fonts/manrope-500.woff2',
-  './fonts/manrope-600.woff2',
-  './fonts/manrope-700.woff2',
-  './fonts/manrope-800.woff2',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/apple-touch-icon.png'
-];
+/* GitHubBackup — sauvegarde automatique en parallèle de Firebase. Firebase
+   reste la synchro en direct entre les deux appareils ; ce module se
+   contente d'écrire (et, si besoin, relire) une copie complète des données
+   dans un fichier du dépôt GitHub, via l'API Contents et un token d'accès
+   personnel propre à cet appareil. */
+const GitHubBackup = (() => {
+  const API = 'https://api.github.com';
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(ASSETS))
-      .then(() => self.skipWaiting())
-  );
-});
+  function b64Encode(str) {
+    const bytes = new TextEncoder().encode(str);
+    let binary = '';
+    bytes.forEach(b => { binary += String.fromCharCode(b); });
+    return btoa(binary);
+  }
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
-});
+  function b64Decode(b64) {
+    const binary = atob(b64.replace(/\n/g, ''));
+    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  }
 
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return;
-  if (event.request.method !== 'GET') return;
+  async function getFile(cfg) {
+    const { owner, repo, branch, path, token } = cfg;
+    const res = await fetch(
+      `${API}/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch || 'main')}`,
+      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } }
+    );
+    if (res.status === 404) return { sha: null, data: null };
+    if (!res.ok) throw new Error(await describeError(res));
+    const json = await res.json();
+    return { sha: json.sha, data: JSON.parse(b64Decode(json.content)) };
+  }
 
-  event.respondWith(
-    caches.match(event.request).then(cached => {
-      const network = fetch(event.request).then(response => {
-        if (response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
-        }
-        return response;
-      }).catch(() => cached);
-      return cached || network;
-    })
-  );
-});
+  async function putFile(cfg, data, sha) {
+    const { owner, repo, branch, path, token } = cfg;
+    const body = {
+      message: `Sauvegarde budget – ${new Date().toLocaleString('fr-FR')}`,
+      content: b64Encode(JSON.stringify(data, null, 2)),
+      branch: branch || 'main'
+    };
+    if (sha) body.sha = sha;
+    const res = await fetch(`${API}/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(await describeError(res));
+    return res.json();
+  }
+
+  async function describeError(res) {
+    if (res.status === 401) return 'Token invalide ou expiré';
+    if (res.status === 403) return 'Accès refusé — vérifiez les permissions du token';
+    if (res.status === 409) return 'Conflit sur le fichier — réessayez dans un instant';
+    try {
+      const err = await res.json();
+      return err.message || `Erreur GitHub (${res.status})`;
+    } catch (_) {
+      return `Erreur GitHub (${res.status})`;
+    }
+  }
+
+  return { getFile, putFile };
+})();
