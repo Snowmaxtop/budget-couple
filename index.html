@@ -126,7 +126,7 @@
       </div>
 
       <div class="card" id="savings-card">
-        <div class="balance-block-title">Épargne</div>
+        <div class="balance-block-title">Épargne · à mettre de côté en début de mois</div>
         <div class="balance-message" id="savings-message">—</div>
         <div class="balance-actions">
           <button class="btn btn-primary" id="savings-validate-btn">J'ai épargné ce mois-ci</button>
@@ -139,7 +139,7 @@
 
       <h2 class="section-heading">Commun</h2>
 
-      <div class="card">
+      <div class="card" id="card-recurring">
         <div class="balance-block-title">Doit donner en début de mois</div>
         <div class="commun-amount" id="commun-recurring-amount">0,00&nbsp;€</div>
         <div class="balance-message" id="balance-message-recurring">—</div>
@@ -149,7 +149,7 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" id="card-rest">
         <div class="balance-block-title">Doit donner en fin de mois</div>
         <div class="commun-amount" id="commun-rest-amount">0,00&nbsp;€</div>
         <div class="balance-message" id="balance-message-rest">—</div>
@@ -427,23 +427,6 @@
       <button type="submit" class="btn btn-primary">Enregistrer</button>
     </div>
   </form>
-</dialog>
-
-<!-- ===== Modale : récompense loisirs de fin de mois ===== -->
-<dialog id="reward-modal">
-  <div class="stacked-form modal-form">
-    <div class="modal-header">
-      <h2>🎉 Bravo !</h2>
-      <button type="button" class="icon-btn" id="reward-modal-close" aria-label="Fermer">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-    <p class="card-sub" id="reward-text">—</p>
-    <div class="modal-actions" style="justify-content: stretch; gap: 10px;">
-      <button type="button" class="btn btn-secondary" id="reward-save-btn" style="flex:1;">Garder en épargne</button>
-      <button type="button" class="btn btn-primary" id="reward-spend-btn" style="flex:1;">Ajouter à mes loisirs</button>
-    </div>
-  </div>
 </dialog>
 
 <script src="js/storage.js"></script>
