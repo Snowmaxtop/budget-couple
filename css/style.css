@@ -143,7 +143,13 @@ h1, h2, h3, p { margin: 0; }
   padding: 20px;
   margin-bottom: 14px;
   box-shadow: var(--shadow-sm);
+  transition: background-color .25s ease, box-shadow .25s ease;
 }
+.card.card-done {
+  background: var(--sage-tint);
+  box-shadow: inset 0 0 0 1.5px var(--sage);
+}
+.card.card-done .balance-block-title { color: var(--sage-deep); }
 .section-title { font-size: .95rem; font-weight: 700; }
 .section-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .card-sub { color: var(--ink-soft); font-size: .82rem; margin-top: 4px; line-height: 1.5; }
@@ -253,6 +259,7 @@ h1, h2, h3, p { margin: 0; }
 .status-pill { font-size: .7rem; font-weight: 700; padding: 4px 10px; border-radius: 100px; white-space: nowrap; }
 .status-settled { background: var(--sage-tint); color: var(--sage-deep); }
 .status-pending { background: var(--rose-tint); color: var(--rose-deep); }
+.history-delete-btn { width: 32px; height: 32px; flex-shrink: 0; color: var(--danger); background: var(--danger-tint); }
 
 /* ===== Forms ===== */
 .stacked-form { display: flex; flex-direction: column; gap: 12px; }
