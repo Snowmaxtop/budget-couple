@@ -268,40 +268,6 @@
       </div>
 
       <div class="card">
-        <h2 class="section-title">Sauvegarde automatique GitHub</h2>
-        <p class="card-sub">Optionnel : chaque modification s'enregistre aussi, en arrière-plan, dans un fichier de votre dépôt GitHub — en plus de Firebase, pas à sa place. Plus besoin d'exporter ni de transférer de fichier à la main.</p>
-        <form id="github-backup-form" class="stacked-form">
-          <label class="field-label">Propriétaire / organisation
-            <input type="text" name="owner" class="input" placeholder="ex : xanthin">
-          </label>
-          <label class="field-label">Dépôt
-            <input type="text" name="repo" class="input" placeholder="ex : budget-couple">
-          </label>
-          <div class="field-row-2">
-            <label class="field-label">Branche
-              <input type="text" name="branch" class="input" placeholder="main">
-            </label>
-            <label class="field-label">Chemin du fichier
-              <input type="text" name="path" class="input" placeholder="data/budget-backup.json">
-            </label>
-          </div>
-          <label class="field-label">Token d'accès personnel
-            <input type="password" name="token" class="input" placeholder="github_pat_...">
-          </label>
-          <label class="checkbox-row">
-            <input type="checkbox" name="enabled" id="github-backup-enabled">
-            <span>Activer la sauvegarde automatique</span>
-          </label>
-        </form>
-        <div class="btn-row">
-          <button class="btn btn-secondary" id="github-backup-now-btn">Sauvegarder maintenant</button>
-          <button class="btn btn-secondary" id="github-restore-btn">Restaurer depuis GitHub</button>
-        </div>
-        <div id="github-backup-status" class="sync-status"></div>
-        <p class="fine-print">⚠️ Utilisez un token « fine-grained » limité à ce seul dépôt, avec uniquement la permission Contents en lecture/écriture. Il reste stocké uniquement sur cet appareil, jamais envoyé à Firebase ni à votre partenaire.</p>
-      </div>
-
-      <div class="card">
         <h2 class="section-title">Synchronisation</h2>
         <p class="card-sub">Les données sont synchronisées en temps réel avec l'autre appareil connecté au même projet Firebase.</p>
         <div id="sync-status" class="sync-status"></div>
@@ -430,7 +396,6 @@
 <script src="js/storage.js"></script>
 <script src="js/calculations.js"></script>
 <script src="js/recurring.js"></script>
-<script src="js/github-backup.js"></script>
 <script type="module" src="js/firebase-sync.js"></script>
 <script src="js/app.js"></script>
 </body>
