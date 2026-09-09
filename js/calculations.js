@@ -199,9 +199,34 @@ const Calculations = (() => {
       .reduce((sum, r) => sum + monthlyEquivalentAmount(r), 0);
   }
 
+  // Toutes les dépenses qui comptent dans le budget loisirs personnel d'une
+  // personne, ce mois-ci :
+  // - ses propres dépenses "perso" (par définition non remboursées) ;
+  // - les dépenses COMMUNES catégorisées Loisirs, payées par l'AUTRE
+  //   personne mais remboursées à 100% par celle-ci : le coût final lui
+  //   revient entièrement (ex. l'autre avance l'achat d'un jeu vidéo qui
+  //   n'est que pour elle, remboursé en entier) — ça compte donc comme
+  //   loisirs de son côté, pas du sien.
+  function personalSpendingExpenses(state, personId, monthKey) {
+    const other = state.people.find(p => p.id !== personId);
+    const ownPerso = state.expenses.filter(e => e.personId === personId
+      && e.type === 'perso'
+      && !isForcedCommun(e)
+      && monthKeyOf(e.date) === monthKey);
+    const reimbursedLoisirs = other ? state.expenses.filter(e => e.personId === other.id
+      && e.type === 'commun'
+      && (e.category || '').trim().toLowerCase() === 'loisirs'
+      && monthKeyOf(e.date) === monthKey
+      && effectiveSplit(e).mode === 'fixed'
+      && effectiveSplit(e).percent === 100) : [];
+    return [...ownPerso, ...reimbursedLoisirs];
+  }
+
   // Pour chaque personne : sa part des dépenses communes récurrentes (au
   // prorata courant des salaires), le budget loisirs qu'elle a défini, et
-  // l'épargne estimée qui en découle (salaire - loisirs - part commune).
+  // l'épargne estimée qui en découle (salaire - loisirs - part commune) —
+  // à titre indicatif seulement : l'objectif réel affiché sur l'Accueil est
+  // celui saisi à la main (people[].savingsGoal, réglé dans Réglages).
   function computeBudgetBreakdown(state) {
     const shares = computeShares(state.people);
     const totalCommunMonthly = totalMonthlyRecurringCommun(state);
@@ -215,19 +240,15 @@ const Calculations = (() => {
   }
 
   // Pour chaque personne : tout ce qu'elle a dépensé ce mois-ci en dépenses
-  // personnelles (type "perso" — par définition non remboursées, quelle que
-  // soit leur catégorie), face à son budget loisirs défini dans Réglages,
-  // plus une éventuelle prime reportée du mois précédent (choix "Ajouter à
-  // mes loisirs" dans la récompense de fin de mois).
+  // personnelles (voir personalSpendingExpenses), face à son budget loisirs
+  // défini dans Réglages, plus une éventuelle prime reportée du mois
+  // précédent (choix "Ajouter à mes loisirs" dans la récompense de fin de
+  // mois).
   function computeLoisirsUsage(state, monthKey) {
     const bonuses = (state.loisirsBonuses && state.loisirsBonuses[monthKey]) || {};
     return state.people.map(p => {
-      const spent = state.expenses
-        .filter(e => e.personId === p.id
-          && e.type === 'perso'
-          && !isForcedCommun(e)
-          && monthKeyOf(e.date) === monthKey)
-        .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      const spent = personalSpendingExpenses(state, p.id, monthKey)
+        .reduce((s, e) => s + effectiveAmount(e), 0);
       const bonus = Number(bonuses[p.id]) || 0;
       const budget = (Number(p.loisirs) || 0) + bonus;
       const barPct = budget > 0 ? Math.min(100, (spent / budget) * 100) : (spent > 0 ? 100 : 0);
@@ -238,6 +259,7 @@ const Calculations = (() => {
   return {
     computeShares, computeMonthSummary, monthKeyOf, categoryBreakdown,
     allMonthKeysWithActivity, totalMonthlyRecurringCommun, computeBudgetBreakdown,
-    computeLoisirsUsage, isForcedCommun, effectiveSplit, normalizeSettlement, effectiveAmount
+    computeLoisirsUsage, isForcedCommun, effectiveSplit, normalizeSettlement, effectiveAmount,
+    personalSpendingExpenses
   };
 })();

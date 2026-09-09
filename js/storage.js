@@ -10,8 +10,8 @@ const Storage = (() => {
       version: 1,
       updatedAt: new Date().toISOString(),
       people: [
-        { id: 'p1', name: 'Xanthin', salary: 0, loisirs: 0 },
-        { id: 'p2', name: 'Ma compagne', salary: 0, loisirs: 0 }
+        { id: 'p1', name: 'Xanthin', salary: 0, loisirs: 0, savingsGoal: 0 },
+        { id: 'p2', name: 'Ma compagne', salary: 0, loisirs: 0, savingsGoal: 0 }
       ],
       expenses: [],
       recurring: [],

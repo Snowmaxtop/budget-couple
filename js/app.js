@@ -151,8 +151,7 @@
       <div class="gauge-track"><div class="gauge-fill ${usage.over ? 'over' : ''}" style="width:${usage.barPct}%"></div></div>
       <div class="gauge-caption ${usage.over ? 'over' : ''}">${loisirsCaption}</div>`;
 
-    const persoExpenses = state.expenses
-      .filter(e => e.personId === myPersonId && e.type === 'perso' && !Calculations.isForcedCommun(e) && Calculations.monthKeyOf(e.date) === currentMonth)
+    const persoExpenses = Calculations.personalSpendingExpenses(state, myPersonId, currentMonth)
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
     document.getElementById('personal-expenses-list').innerHTML = persoExpenses.length
       ? persoExpenses.map(renderExpenseRowHTML).join('')
@@ -166,16 +165,19 @@
   }
 
   // Rappel mensuel : la personne active a-t-elle bien viré son épargne ce
-  // mois-ci ? Un simple bouton à cocher, par personne et par mois — pas de
-  // montant réel suivi, juste l'objectif estimé (Réglages → Budget loisirs
-  // & épargne) comme repère.
+  // mois-ci ? Un simple bouton à cocher, par personne et par mois. L'objectif
+  // affiché est celui saisi à la main dans Réglages (people[].savingsGoal),
+  // pas l'estimation automatique (qui reste visible dans Réglages à titre
+  // indicatif).
   function renderSavingsCard() {
     if (!state.savingsLog) state.savingsLog = {};
-    const breakdown = Calculations.computeBudgetBreakdown(state).find(b => b.id === myPersonId);
-    const estimate = breakdown ? breakdown.savings : 0;
+    const person = personById(myPersonId);
+    const goal = Number(person.savingsGoal) || 0;
     const log = (state.savingsLog[currentMonth] && state.savingsLog[currentMonth][myPersonId]) || null;
 
-    document.getElementById('savings-message').textContent = `Objectif estimé ce mois-ci : ${formatCurrency(estimate)}`;
+    document.getElementById('savings-message').textContent = goal > 0
+      ? `Objectif ce mois-ci : ${formatCurrency(goal)}`
+      : 'Aucun montant à épargner défini pour l\u2019instant (Réglages)';
 
     const btn = document.getElementById('savings-validate-btn');
     const note = document.getElementById('savings-note');
@@ -456,6 +458,12 @@
     refreshBudgetPersonNames();
     renderBudgetBreakdown();
 
+    const savingsForm = document.getElementById('settings-savings-form');
+    savingsForm.savings0.value = state.people[0].savingsGoal || '';
+    savingsForm.savings1.value = state.people[1].savingsGoal || '';
+    document.getElementById('savings-name0').textContent = state.people[0].name;
+    document.getElementById('savings-name1').textContent = state.people[1].name;
+
     const ghForm = document.getElementById('github-backup-form');
     ghForm.owner.value = githubBackupConfig.owner;
     ghForm.repo.value = githubBackupConfig.repo;
@@ -483,6 +491,8 @@
       renderSharesPreview();
       refreshBudgetPersonNames();
       renderBudgetBreakdown();
+      document.getElementById('savings-name0').textContent = state.people[0].name;
+      document.getElementById('savings-name1').textContent = state.people[1].name;
     });
 
     const loisirsForm = document.getElementById('settings-loisirs-form');
@@ -491,6 +501,13 @@
       state.people[1].loisirs = parseFloat(loisirsForm.loisirs1.value) || 0;
       persist();
       renderBudgetBreakdown();
+    });
+
+    const savingsForm = document.getElementById('settings-savings-form');
+    savingsForm.addEventListener('input', () => {
+      state.people[0].savingsGoal = parseFloat(savingsForm.savings0.value) || 0;
+      state.people[1].savingsGoal = parseFloat(savingsForm.savings1.value) || 0;
+      persist();
     });
 
     document.getElementById('export-btn').addEventListener('click', () => Storage.exportJSON(state));
