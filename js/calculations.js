@@ -223,10 +223,11 @@ const Calculations = (() => {
   }
 
   // Pour chaque personne : sa part des dépenses communes récurrentes (au
-  // prorata courant des salaires), le budget loisirs qu'elle a défini, et
-  // l'épargne estimée qui en découle (salaire - loisirs - part commune) —
-  // à titre indicatif seulement : l'objectif réel affiché sur l'Accueil est
-  // celui saisi à la main (people[].savingsGoal, réglé dans Réglages).
+  // prorata courant des salaires), le budget loisirs qu'elle a défini, ce
+  // qu'elle a déjà mis de côté en début de mois (savingsGoal, réglé à la
+  // main), et ce qu'il devrait théoriquement rester en plus à la fin du
+  // mois une fois tout ça couvert (salaire - loisirs - part commune -
+  // épargne du début de mois).
   function computeBudgetBreakdown(state) {
     const shares = computeShares(state.people);
     const totalCommunMonthly = totalMonthlyRecurringCommun(state);
@@ -234,8 +235,9 @@ const Calculations = (() => {
       const commun = totalCommunMonthly * (shares[p.id] || 0);
       const loisirs = Number(p.loisirs) || 0;
       const salary = Number(p.salary) || 0;
-      const savings = salary - loisirs - commun;
-      return { id: p.id, name: p.name, commun, loisirs, savings };
+      const savingsGoal = Number(p.savingsGoal) || 0;
+      const savings = salary - loisirs - commun - savingsGoal;
+      return { id: p.id, name: p.name, commun, loisirs, savingsGoal, savings };
     });
   }
 

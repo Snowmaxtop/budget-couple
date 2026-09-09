@@ -469,7 +469,8 @@
         <div class="budget-person-header"><span class="avatar ${i === 0 ? 'avatar-a' : 'avatar-b'}">${initial(b.name)}</span>${escapeHtml(b.name)}</div>
         <div class="budget-line"><span>Dépenses communes (récurrentes)</span><span>${formatCurrency(b.commun)}</span></div>
         <div class="budget-line"><span>Loisirs</span><span>${formatCurrency(b.loisirs)}</span></div>
-        <div class="budget-line budget-line-total ${b.savings < 0 ? 'negative' : 'positive'}"><span>Épargne estimée</span><span>${formatCurrency(b.savings)}</span></div>
+        <div class="budget-line"><span>Épargne du début de mois</span><span>${formatCurrency(b.savingsGoal)}</span></div>
+        <div class="budget-line budget-line-total ${b.savings < 0 ? 'negative' : 'positive'}"><span>Épargne estimée en fin de mois</span><span>${formatCurrency(b.savings)}</span></div>
       </div>`).join('');
   }
 
@@ -540,6 +541,7 @@
       state.people[0].savingsGoal = parseFloat(savingsForm.savings0.value) || 0;
       state.people[1].savingsGoal = parseFloat(savingsForm.savings1.value) || 0;
       persist();
+      renderBudgetBreakdown();
     });
 
     document.getElementById('export-btn').addEventListener('click', () => Storage.exportJSON(state));
