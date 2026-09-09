@@ -182,7 +182,9 @@
     const btn = document.getElementById('savings-validate-btn');
     const note = document.getElementById('savings-note');
     const reward = document.getElementById('savings-reward');
-    if (log && log.done) {
+    const cardEl = document.getElementById('savings-card');
+    const done = !!(log && log.done);
+    if (done) {
       btn.textContent = 'Annuler';
       note.hidden = false;
       note.textContent = `Épargné le ${formatDateFR(log.date)}`;
@@ -192,6 +194,7 @@
       note.hidden = true;
       reward.hidden = true;
     }
+    cardEl.classList.toggle('card-done', done);
   }
 
   function toggleSavingsLog() {
@@ -266,6 +269,7 @@
 
     const settleBtn = document.getElementById(`settle-${bucket}-btn`);
     const settledNote = document.getElementById(`settled-note-${bucket}`);
+    const cardEl = document.getElementById(`card-${bucket}`);
     settleBtn.disabled = total === 0;
     if (settled) {
       settleBtn.textContent = 'Annuler le règlement';
@@ -275,6 +279,7 @@
       settleBtn.textContent = 'Marquer comme réglé';
       settledNote.hidden = true;
     }
+    if (cardEl) cardEl.classList.toggle('card-done', !!settled);
   }
 
   /* ===================== Dashboard ===================== */
@@ -308,7 +313,10 @@
   function getFilteredExpenses() {
     return state.expenses.filter(e => {
       if (filters.type !== 'all' && e.type !== filters.type) return false;
-      if (filters.personId !== 'all' && e.personId !== filters.personId) return false;
+      // Le filtre "Personne" ne restreint que les dépenses PERSONNELLES —
+      // une dépense commune concerne les deux, elle reste visible quel que
+      // soit le profil sélectionné (seul l'avatar du payeur change).
+      if (filters.personId !== 'all' && e.type === 'perso' && e.personId !== filters.personId) return false;
       if (filters.month !== 'all' && Calculations.monthKeyOf(e.date) !== filters.month) return false;
       return true;
     }).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
@@ -348,7 +356,7 @@
   function renderRecurring() {
     populateRecurringFilterOptions();
     const rules = state.recurring
-      .filter(r => filters.recurringPersonId === 'all' || r.personId === filters.recurringPersonId)
+      .filter(r => filters.recurringPersonId === 'all' || r.type === 'commun' || r.personId === filters.recurringPersonId)
       .slice().sort((a, b) => (a.label || '').localeCompare(b.label || ''));
     document.getElementById('recurring-empty').hidden = rules.length !== 0;
     const today = todayStr();
@@ -401,12 +409,36 @@
             <div class="history-sub">${formatCurrency(s.total)} de dépenses communes</div>
           </div>
           <span class="status-pill ${pillClass}">${pillLabel}</span>
+          <button type="button" class="icon-btn history-delete-btn" data-action="delete-month" data-month="${k}" aria-label="Supprimer les données de ce mois">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
         </div>`;
     }).join('');
   }
 
+  // Supprime toutes les données (dépenses, règlements, primes loisirs,
+  // épargne pointée) rattachées à un mois précis — utile pour repartir sur
+  // une base propre (ex. mois de test) sans toucher aux autres mois.
+  function deleteMonthData(monthKey) {
+    const label = formatMonthLabel(monthKey);
+    if (!confirm(`Supprimer définitivement toutes les données de ${label} (dépenses, règlements, épargne) ? Cette action est irréversible et concerne les deux profils.`)) return;
+    state.expenses = state.expenses.filter(e => Calculations.monthKeyOf(e.date) !== monthKey);
+    delete state.settlements[monthKey];
+    if (state.loisirsBonuses) delete state.loisirsBonuses[monthKey];
+    if (state.loisirsRewards) delete state.loisirsRewards[monthKey];
+    if (state.savingsLog) delete state.savingsLog[monthKey];
+    persist();
+    renderAll();
+  }
+
   function bindHistoryList() {
     document.getElementById('history-list').addEventListener('click', (e) => {
+      const delBtn = e.target.closest('[data-action="delete-month"]');
+      if (delBtn) {
+        e.stopPropagation();
+        deleteMonthData(delBtn.dataset.month);
+        return;
+      }
       const row = e.target.closest('.history-row');
       if (!row) return;
       currentMonth = row.dataset.month;
@@ -882,56 +914,6 @@
     renderAll();
   }
 
-  /* ===================== Récompense loisirs de fin de mois ===================== */
-  // Au premier affichage après le passage à un nouveau mois, propose à la
-  // personne active de garder en épargne (rien à faire) ou d'ajouter à son
-  // budget loisirs de ce mois-ci le reliquat non dépensé le mois précédent.
-  // Une seule proposition par personne et par mois (state.loisirsRewards).
-  let pendingReward = null;
-
-  function checkLoisirsReward() {
-    if (!myPersonId) return;
-    if (!state.loisirsRewards) state.loisirsRewards = {};
-    if (!state.loisirsBonuses) state.loisirsBonuses = {};
-    const prevMonth = shiftMonth(todayStr().slice(0, 7), -1);
-    const already = state.loisirsRewards[prevMonth] && state.loisirsRewards[prevMonth][myPersonId];
-    if (already) return;
-    const usage = Calculations.computeLoisirsUsage(state, prevMonth).find(u => u.id === myPersonId);
-    if (!usage || usage.budget <= 0) return;
-    const leftover = usage.budget - usage.spent;
-    if (leftover <= 0.5) return; // pas assez pour que ça vaille une récompense
-    pendingReward = { monthKey: prevMonth, amount: leftover };
-    document.getElementById('reward-text').textContent =
-      `Il vous restait ${formatCurrency(leftover)} de budget loisirs en ${formatMonthLabel(prevMonth)}. Envie de le garder de côté, ou de vous faire plaisir ce mois-ci ?`;
-    document.getElementById('reward-modal').showModal();
-  }
-
-  function recordLoisirsRewardDecision(decision) {
-    if (!pendingReward) return;
-    if (!state.loisirsRewards) state.loisirsRewards = {};
-    if (!state.loisirsBonuses) state.loisirsBonuses = {};
-    const { monthKey, amount } = pendingReward;
-    if (!state.loisirsRewards[monthKey]) state.loisirsRewards[monthKey] = {};
-    state.loisirsRewards[monthKey][myPersonId] = decision;
-    if (decision === 'added') {
-      const currentMonthKey = todayStr().slice(0, 7);
-      if (!state.loisirsBonuses[currentMonthKey]) state.loisirsBonuses[currentMonthKey] = {};
-      state.loisirsBonuses[currentMonthKey][myPersonId] = (Number(state.loisirsBonuses[currentMonthKey][myPersonId]) || 0) + amount;
-    }
-    pendingReward = null;
-    document.getElementById('reward-modal').close();
-    persist();
-    renderAll();
-  }
-
-  function bindRewardModal() {
-    document.getElementById('reward-modal-close').addEventListener('click', () => {
-      document.getElementById('reward-modal').close();
-    });
-    document.getElementById('reward-save-btn').addEventListener('click', () => recordLoisirsRewardDecision('saved'));
-    document.getElementById('reward-spend-btn').addEventListener('click', () => recordLoisirsRewardDecision('added'));
-  }
-
   function bindModal() {
     document.getElementById('fab-add').addEventListener('click', openAddExpenseModal);
     document.getElementById('expense-modal-close').addEventListener('click', closeExpenseModal);
@@ -1021,7 +1003,6 @@
           document.getElementById('profile-gate').hidden = true;
           document.getElementById('app').hidden = false;
           renderAll();
-          checkLoisirsReward();
         } else {
           appFullyStarted = true;
           finishStartup();
@@ -1041,7 +1022,6 @@
     showView('dashboard');
     updateSyncBadge();
     startDataSync();
-    checkLoisirsReward();
   }
 
   function startAppFor() {
@@ -1067,7 +1047,6 @@
     bindHistoryList();
     bindModal();
     bindProfileGate();
-    bindRewardModal();
     registerServiceWorker();
 
     if (!window.FirebaseSync) {
